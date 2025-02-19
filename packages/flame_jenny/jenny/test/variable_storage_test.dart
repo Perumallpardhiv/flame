@@ -1,4 +1,5 @@
 import 'package:jenny/jenny.dart';
+import 'package:jenny/src/structure/expressions/expression.dart';
 import 'package:test/test.dart';
 
 import 'utils.dart';
@@ -41,7 +42,7 @@ void main() {
     });
 
     test('unknown variable type', () {
-      final storage = BadVariableStorage();
+      final storage = _BadVariableStorage();
       expect(storage.hasVariable('x'), true);
       expect(storage.getVariableType('x'), ExpressionType.unknown);
     });
@@ -66,11 +67,42 @@ void main() {
         ),
       );
     });
+
+    test('remove a variable', () {
+      final storage = VariableStorage();
+      storage.setVariable('x', 42);
+      expect(storage.hasVariable('x'), true);
+
+      storage.remove('x');
+
+      expect(storage.hasVariable('x'), false);
+    });
+
+    test('clear variables except node visits', () {
+      final storage = VariableStorage();
+      storage.setVariable('x', 42);
+      storage.setVariable('@node_name1', 1);
+
+      storage.clear();
+
+      expect(storage.hasVariable('x'), false);
+      expect(storage.hasVariable('@node_name1'), true);
+    });
+
+    test('clear variables including node visits', () {
+      final storage = VariableStorage();
+      storage.setVariable('x', 42);
+      storage.setVariable('@node_name1', 1);
+
+      storage.clear(clearNodeVisits: true);
+
+      expect(storage.isEmpty, true);
+    });
   });
 }
 
-class BadVariableStorage extends VariableStorage {
-  BadVariableStorage() {
+class _BadVariableStorage extends VariableStorage {
+  _BadVariableStorage() {
     variables['x'] = null;
   }
 }

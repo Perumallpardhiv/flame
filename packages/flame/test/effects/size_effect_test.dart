@@ -2,14 +2,13 @@ import 'dart:math';
 
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flame/game.dart';
 import 'package:flame_test/flame_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('SizeEffect', () {
     testWithFlameGame('relative', (game) async {
-      final component = ResizableComponent();
+      final component = _ResizableComponent();
       await game.ensureAdd(component);
 
       component.size = Vector2.all(1.0);
@@ -31,7 +30,7 @@ void main() {
     });
 
     testWithFlameGame('absolute', (game) async {
-      final component = ResizableComponent();
+      final component = _ResizableComponent();
       await game.ensureAdd(component);
 
       component.size = Vector2.all(1.0);
@@ -53,7 +52,7 @@ void main() {
     });
 
     testWithFlameGame('reset relative', (game) async {
-      final component = ResizableComponent();
+      final component = _ResizableComponent();
       await game.ensureAdd(component);
 
       final effect = SizeEffect.by(
@@ -73,8 +72,8 @@ void main() {
     });
 
     testWithFlameGame('reset absolute', (game) async {
-      final component = ResizableComponent();
-      game.ensureAdd(component);
+      final component = _ResizableComponent();
+      await game.ensureAdd(component);
 
       final effect = SizeEffect.to(
         Vector2.all(1.0),
@@ -92,7 +91,7 @@ void main() {
     });
 
     testWithFlameGame('size composition', (game) async {
-      final component = ResizableComponent();
+      final component = _ResizableComponent();
       await game.ensureAdd(component);
 
       await component.add(
@@ -122,8 +121,8 @@ void main() {
     });
 
     testRandom('a very long size change', (Random rng) async {
-      final game = FlameGame()..onGameResize(Vector2(1, 1));
-      final component = ResizableComponent();
+      final game = await initializeFlameGame();
+      final component = _ResizableComponent();
       await game.ensureAdd(component);
 
       final effect = SizeEffect.by(
@@ -150,4 +149,4 @@ void main() {
   });
 }
 
-class ResizableComponent extends PositionComponent implements SizeProvider {}
+class _ResizableComponent extends PositionComponent implements SizeProvider {}

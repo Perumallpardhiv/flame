@@ -35,6 +35,7 @@ There are multiple effects provided by Flame, and you can also
 - [`MoveByEffect`](#movebyeffect)
 - [`MoveToEffect`](#movetoeffect)
 - [`MoveAlongPathEffect`](#movealongpatheffect)
+- [`RotateAroundEffect`](#rotatearoundeffect)
 - [`RotateEffect.by`](#rotateeffectby)
 - [`RotateEffect.to`](#rotateeffectto)
 - [`ScaleEffect.by`](#scaleeffectby)
@@ -84,15 +85,14 @@ functionality inherited by all other effects. This includes:
 - The ability to pause/resume the effect using `effect.pause()` and `effect.resume()`. You can
   check whether the effect is currently paused using `effect.isPaused`.
 
-- The ability to reverse the effect's time direction using `effect.reverse()`. Use
-  `effect.isReversed` to check if the effect is currently running back in time.
-
 - Property `removeOnFinish` (which is true by default) will cause the effect component to be
   removed from the game tree and garbage-collected once the effect completes. Set this to false
   if you plan to reuse the effect after it is finished.
 
 - Optional user-provided `onComplete`, which will be invoked when the effect has just
   completed its execution but before it is removed from the game.
+
+- A `completed` future that completes when the effect finishes.
 
 - The `reset()` method reverts the effect to its original state, allowing it to run once again.
 
@@ -176,6 +176,29 @@ curve drawn on the canvas.
 Another flag `oriented: true` instructs the target not only move along the curve, but also rotate
 itself in the direction the curve is facing at each point. With this flag the effect becomes both
 the move- and the rotate- effect at the same time.
+
+
+### `RotateAroundEffect`
+
+Rotates the target clockwise by the specified angle relative to its current orientation around
+the specified center. The angle is in radians. For example, the following effect will rotate the
+target 90º (=[tau]/4 in radians) clockwise around (100, 100).
+
+```{flutter-app}
+:sources: ../flame/examples
+:page: rotate_around_effect
+:show: widget code infobox
+:width: 180
+:height: 160
+```
+
+```dart
+final effect = RotateAroundEffect(
+  tau/4,
+  center: Vector2(100, 100),
+  EffectController(duration: 2),
+);
+```
 
 
 ### `RotateEffect.by`
@@ -538,13 +561,14 @@ Usage example:
 ```dart
 final effect = ColorEffect(
   const Color(0xFF00FF00),
-  const Offset(0.0, 0.8),
   EffectController(duration: 1.5),
+  opacityFrom: 0.2,
+  opacityTo: 0.8,
 );
 ```
 
-The `Offset` argument will determine "how much" of the color that will be applied to the component,
-in this example the effect will start with 0% and will go up to 80%.
+The `opacityFrom` and `opacityTo` arguments will determine "how much" of the color that will be
+applied to the component. In this example the effect will start with 20% and will go up to 80%.
 
 **Note:** Due to how this effect is implemented, and how Flutter's `ColorFilter` class works, this
 effect can't be mixed with other `ColorEffect`s, when more than one is added to the component, only
@@ -771,7 +795,7 @@ following effects qualify: [`MoveByEffect`](#movebyeffect), [`MoveToEffect`](#mo
 [`RotateEffect.to`](#rotateeffectto).
 
 The parameter `speed` is in units per second, where the notion of a "unit" depends on the target
-effect. For example, for move effects, they refer to the distance travelled; for rotation effects
+effect. For example, for move effects, they refer to the distance traveled; for rotation effects
 the units are radians.
 
 ```dart

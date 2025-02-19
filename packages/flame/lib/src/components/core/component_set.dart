@@ -22,12 +22,6 @@ class ComponentSet extends QueryableOrderedSet<Component> {
           strictMode: strictMode ?? defaultStrictMode,
         );
 
-  /// Components whose priority changed since the last update.
-  ///
-  /// When priorities change we need to re-balance the component set, but
-  /// we can only do that after each update to avoid concurrency issues.
-  final Set<Component> _changedPriorities = {};
-
   static bool defaultStrictMode = false;
 
   /// Marked as internal, because the users shouldn't be able to add elements
@@ -73,64 +67,47 @@ class ComponentSet extends QueryableOrderedSet<Component> {
   @override
   bool get isNotEmpty => !isEmpty;
 
-  /// Call this on your update method.
+  /// Queries the component set (typically [Component.children]) for
+  /// components of type [C].
   ///
-  /// This method effectuates any pending operations of insertion or removal,
-  /// and thus actually modifies the components set.
-  /// Note: do not call this while iterating the set.
-  void updateComponentList() {
-    _actuallyUpdatePriorities();
+  /// Example:
+  ///
+  /// ```dart
+  /// final myComponents = world.children.query<MyCustomComponent>();
+  /// ```
+  ///
+  /// This is equivalent to `world.children.whereType<MyCustomComponent>()`
+  /// except that [query] is O(1).
+  ///
+  /// The function returns an [Iterable]. In past versions of Flame,
+  /// it was a modifiable [List] but modifying this list would have been a bug.
+  ///
+  /// When [strictMode] is `true`, you *must* call [register]
+  /// for every type [C] you desire to use. Use something like:
+  ///
+  /// ```dart
+  /// world.children.register<MyCustomComponent>();
+  /// ```
+  @override
+  Iterable<C> query<C extends Component>() {
+    // We are returning an iterable (view) here to avoid hard-to-detect
+    // bugs where the user assumes the query is a unique result list
+    // and they start doing things like `removeWhere()`.
+    // This would remove components from the component set itself
+    // (but not from the game)!
+    return super.query();
   }
 
-  @override
-  void rebalanceAll() {
+  /// Sorts the components according to their `priority`s. This method is
+  /// invoked by the framework when it knows that the priorities of the
+  /// components in this set has changed.
+  @internal
+  void reorder() {
     final elements = toList();
     // bypass the wrapper because the components are already added
     super.clear();
-    elements.forEach(super.add);
-  }
-
-  @override
-  void rebalanceWhere(bool Function(Component element) test) {
-    // bypass the wrapper because the components are already added
-    final elements = super.removeWhere(test).toList();
-    elements.forEach(super.add);
-  }
-
-  /// Changes the priority of [component] and reorders the games component list.
-  ///
-  /// Returns true if changing the component's priority modified one of the
-  /// components that existed directly on the game and false if it
-  /// either was a child of another component, if it didn't exist at all or if
-  /// it was a component added directly on the game but its priority didn't
-  /// change.
-  bool changePriority(
-    Component component,
-    int priority,
-  ) {
-    if (component.priority == priority) {
-      return false;
+    for (final element in elements) {
+      super.add(element);
     }
-    component.changePriorityWithoutResorting(priority);
-    _changedPriorities.add(component);
-    return true;
-  }
-
-  void _actuallyUpdatePriorities() {
-    var hasRootComponents = false;
-    final parents = <Component>{};
-    _changedPriorities.forEach((component) {
-      final parent = component.parent;
-      if (parent != null) {
-        parents.add(parent);
-      } else {
-        hasRootComponents |= contains(component);
-      }
-    });
-    if (hasRootComponents) {
-      rebalanceAll();
-    }
-    parents.forEach((parent) => parent.reorderChildren());
-    _changedPriorities.clear();
   }
 }

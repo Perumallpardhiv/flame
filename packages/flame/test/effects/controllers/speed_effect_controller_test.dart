@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flame/game.dart';
+import 'package:flame/geometry.dart';
 import 'package:flame/src/effects/measurable_effect.dart';
 import 'package:flame_test/flame_test.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,26 +42,24 @@ void main() {
         );
       });
 
-      test('negative measure', () {
+      testWithFlameGame('negative measure', (game) async {
         expect(
           () async {
-            final effect = BadEffect(
+            final effect = _BadEffect(
               SpeedEffectController(LinearEffectController(1), speed: 1),
             );
-            final game = FlameGame()..onGameResize(Vector2.all(100));
             await game.ensureAdd(PositionComponent()..add(effect));
             game.update(0);
           },
-          failsAssert('negative measure returned by BadEffect: -1.0'),
+          failsAssert('negative measure returned by _BadEffect: -1.0'),
         );
       });
     });
 
     group('applied to various effects', () {
-      test('speed on MoveEffect', () async {
+      testWithFlameGame('speed on MoveEffect', (game) async {
         final effect =
             MoveEffect.to(Vector2(8, 12), EffectController(speed: 1));
-        final game = FlameGame()..onGameResize(Vector2.all(100));
         final component = PositionComponent(position: Vector2(5, 8));
         component.add(effect);
         await game.ensureAdd(component);
@@ -72,7 +70,7 @@ void main() {
         expect(component.position, closeToVector(Vector2(8, 12)));
       });
 
-      test('speed on MoveAlongPathEffect', () async {
+      testWithFlameGame('speed on MoveAlongPathEffect', (game) async {
         final effect = MoveAlongPathEffect(
           Path()
             ..lineTo(30, 40)
@@ -82,7 +80,6 @@ void main() {
           EffectController(speed: 4),
           absolute: true,
         );
-        final game = FlameGame()..onGameResize(Vector2.all(100));
         final component = PositionComponent(position: Vector2(5, 8));
         component.add(effect);
         await game.ensureAdd(component);
@@ -93,10 +90,8 @@ void main() {
         expect(component.position, closeToVector(Vector2(10, 30)));
       });
 
-      test('speed on RotateEffect', () async {
-        const tau = Transform2D.tau;
+      testWithFlameGame('speed on RotateEffect', (game) async {
         final effect = RotateEffect.to(tau, EffectController(speed: 1));
-        final game = FlameGame()..onGameResize(Vector2.all(100));
         final component = PositionComponent(position: Vector2(5, 8));
         component.add(effect);
         await game.ensureAdd(component);
@@ -107,12 +102,11 @@ void main() {
         expect(component.angle, closeTo(tau, 1e-15));
       });
 
-      test('reset', () async {
+      testWithFlameGame('reset', (game) async {
         final effect = MoveEffect.to(
           Vector2(10, 0),
           SpeedEffectController(LinearEffectController(0), speed: 1),
         );
-        final game = FlameGame()..onGameResize(Vector2.all(100));
         final component = PositionComponent();
         component.add(effect..removeOnFinish = false);
         await game.ensureAdd(component);
@@ -133,8 +127,8 @@ void main() {
   });
 }
 
-class BadEffect extends Effect implements MeasurableEffect {
-  BadEffect(super.controller);
+class _BadEffect extends Effect implements MeasurableEffect {
+  _BadEffect(super.controller);
 
   @override
   void apply(double progress) {}

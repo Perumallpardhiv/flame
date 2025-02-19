@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/src/experimental/geometry/shapes/circle.dart';
@@ -82,4 +83,22 @@ abstract class Shape {
   ///
   /// This method is only used for convex shapes.
   Vector2 support(Vector2 direction);
+
+  /// Returns a point on the shape's boundary which is closest to the given
+  /// [point].
+  ///
+  /// The [point] must lie outside of the shape. If there are multiple nearest
+  /// points, any one can be returned.
+  ///
+  /// This method will not modify [point]. At the same time, the caller does
+  /// not get ownership of the returned object: they must treat it as an
+  /// immutable short-lived object.
+  Vector2 nearestPoint(Vector2 point);
+
+  /// Returns a random point within the shape if [within] is true (default) and
+  /// otherwise a point along the edges of the shape.
+  /// Do note that [within]=true also includes the edges.
+  ///
+  /// If [isClosed] is false, the [within] value does not make a difference.
+  Vector2 randomPoint({Random? random, bool within = true});
 }

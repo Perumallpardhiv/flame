@@ -1,5 +1,6 @@
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame/game.dart';
 import 'package:flame_test/flame_test.dart';
 import 'package:test/test.dart';
 
@@ -109,6 +110,60 @@ void main() {
         expect(hitboxB.activeCollisions.length, 0);
         expect(hitboxA.endCounter, 1);
         expect(hitboxB.endCounter, 1);
+      },
+      'hitboxes are in any descendants': (game) async {
+        // The hitboxParent of the `testHitbox` will be the `player`.
+        final player = TestBlock(
+          Vector2.all(0),
+          Vector2.all(10),
+          addTestHitbox: false,
+          children: [
+            Component(
+              children: [
+                Component(children: [TestHitbox()]),
+              ],
+            ),
+          ],
+        );
+        final block = TestBlock(Vector2.all(100), Vector2.all(10));
+
+        await game.ensureAddAll([player, block]);
+
+        expect(block.startCounter, 0);
+        expect(block.onCollisionCounter, 0);
+        expect(block.endCounter, 0);
+
+        // player <== collides with  ==> block
+        block.position = Vector2.all(5);
+        game.update(0);
+
+        expect(block.startCounter, 1);
+        expect(block.onCollisionCounter, 1);
+        expect(block.endCounter, 0);
+      },
+      'hitboxParent is PositionComponent but not CollisionCallbacks':
+          (game) async {
+        final player = PositionComponent(
+          position: Vector2.all(0),
+          size: Vector2.all(10),
+          children: [
+            Component(
+              children: [
+                Component(children: [TestHitbox()]),
+              ],
+            ),
+          ],
+        );
+        final block = TestBlock(Vector2.all(100), Vector2.all(10));
+
+        await game.ensureAddAll([player, block]);
+
+        block.position = Vector2.all(5);
+        game.update(0);
+
+        expect(block.startCounter, 1);
+        expect(block.onCollisionCounter, 1);
+        expect(block.endCounter, 0);
       },
     });
   });
@@ -348,6 +403,54 @@ void main() {
       expect(blockA.endCounter, 1);
       expect(blockB.endCounter, 1);
     },
+    'component collision callbacks are not called with hitbox '
+        'triggersParentCollision option': (game) async {
+      final utilityHitboxA = TestHitbox('hitboxA')
+        ..triggersParentCollision = false;
+      final blockA = TestBlock(
+        Vector2.all(10),
+        Vector2.all(10),
+      );
+      blockA.add(utilityHitboxA);
+
+      final utilityHitboxB = TestHitbox('hitboxB')
+        ..triggersParentCollision = false;
+      final blockB = TestBlock(
+        Vector2.all(15),
+        Vector2.all(10),
+      );
+      blockB.add(utilityHitboxB);
+      await game.ensureAddAll([blockA, blockB]);
+
+      game.update(0);
+      expect(blockA.startCounter, 1);
+      expect(blockB.startCounter, 1);
+      expect(blockA.onCollisionCounter, 1);
+      expect(blockB.onCollisionCounter, 1);
+      expect(blockA.endCounter, 0);
+      expect(blockB.endCounter, 0);
+      expect(utilityHitboxA.startCounter, 2);
+      expect(utilityHitboxB.startCounter, 2);
+      expect(utilityHitboxA.onCollisionCounter, 2);
+      expect(utilityHitboxB.onCollisionCounter, 2);
+      expect(utilityHitboxA.endCounter, 0);
+      expect(utilityHitboxB.endCounter, 0);
+
+      blockB.position = Vector2(30, 30);
+      game.update(0);
+      expect(blockA.startCounter, 1);
+      expect(blockB.startCounter, 1);
+      expect(blockA.onCollisionCounter, 1);
+      expect(blockB.onCollisionCounter, 1);
+      expect(blockA.endCounter, 1);
+      expect(blockB.endCounter, 1);
+      expect(utilityHitboxA.startCounter, 2);
+      expect(utilityHitboxB.startCounter, 2);
+      expect(utilityHitboxA.onCollisionCounter, 2);
+      expect(utilityHitboxB.onCollisionCounter, 2);
+      expect(utilityHitboxA.endCounter, 2);
+      expect(utilityHitboxB.endCounter, 2);
+    },
 
     // Reproduced #1478
     'collision callbacks with many hitboxes added': (game) async {
@@ -409,16 +512,20 @@ void main() {
       expect(player.endCounter, 0);
     },
     // Reproduced #1478
-    'collision callbacks with changed game size': (game) async {
+    'collision callbacks with changed game size': (collisionSystem) async {
+      final game = collisionSystem as FlameGame;
       final block = TestBlock(Vector2.all(20), Vector2.all(10))
         ..anchor = Anchor.center;
-      await game.ensureAddAll([ScreenHitbox(), block]);
+      final screenHitbox = ScreenHitbox();
+      game.world.addAll([block, screenHitbox]);
+      await game.ready();
+      game.world.update(0);
 
       game.update(0);
       expect(block.startCounter, 0);
       expect(block.onCollisionCounter, 0);
       expect(block.endCounter, 0);
-      block.position.x = game.size.x;
+      block.position.x = game.size.x / 2;
 
       game.update(0);
       expect(block.startCounter, 1);
@@ -430,7 +537,7 @@ void main() {
       expect(block.startCounter, 1);
       expect(block.onCollisionCounter, 1);
       expect(block.endCounter, 1);
-      block.position.y = game.size.y;
+      block.position.y = game.size.y / 2;
 
       game.update(0);
       expect(block.startCounter, 2);
@@ -458,5 +565,106 @@ void main() {
       expect(outerBlock.onCollisionCounter, 1);
       expect(outerBlock.endCounter, 1);
     },
+    'collision callbacks for nested World': (outerCollisionSystem) async {
+      final game = outerCollisionSystem as FlameGame;
+      final world1 = CollisionDetectionWorld();
+      final world2 = CollisionDetectionWorld();
+      final camera1 = CameraComponent(world: world1);
+      final camera2 = CameraComponent(world: world2);
+      await game.ensureAddAll([world1, world2, camera1, camera2]);
+      final block1 = TestBlock(Vector2(1, 1), Vector2.all(2))
+        ..anchor = Anchor.center;
+      final block2 = TestBlock(Vector2(1, -1), Vector2.all(2))
+        ..anchor = Anchor.center;
+      final block3 = TestBlock(Vector2(-1, 1), Vector2.all(2))
+        ..anchor = Anchor.center;
+      final block4 = TestBlock(Vector2(-1, -1), Vector2.all(2))
+        ..anchor = Anchor.center;
+      await world1.ensureAddAll([block1, block2]);
+      await world2.ensureAddAll([block3, block4]);
+
+      game.update(0);
+      for (final block in [block1, block2, block3, block4]) {
+        expect(block.startCounter, 1);
+        expect(block.onCollisionCounter, 1);
+        expect(block.endCounter, 0);
+      }
+      expect(block1.collidedWithExactly([block2]), isTrue);
+      expect(block2.collidedWithExactly([block1]), isTrue);
+      expect(block3.collidedWithExactly([block4]), isTrue);
+      expect(block4.collidedWithExactly([block3]), isTrue);
+
+      for (final block in [block1, block2, block3, block4]) {
+        block.position.scale(3);
+      }
+
+      game.update(0);
+      for (final block in [block1, block2, block3, block4]) {
+        expect(block.startCounter, 1);
+        expect(block.onCollisionCounter, 1);
+        expect(block.endCounter, 1);
+      }
+    },
+  });
+
+  group('ComponentTypeCheck(only supported in the QuadTree)', () {
+    testQuadTreeCollisionDetectionGame(
+      'makes the correct Component type start to collide',
+      (game) async {
+        final water = Water(
+          position: Vector2.all(0),
+          size: Vector2.all(10),
+          children: [
+            Component(
+              children: [
+                Component(children: [TestHitbox()]),
+              ],
+            ),
+          ],
+        );
+        final brick = Brick(
+          position: Vector2.all(50),
+          size: Vector2.all(10),
+          children: [
+            Component(
+              children: [
+                Component(children: [TestHitbox()]),
+              ],
+            ),
+          ],
+        );
+
+        final block = TestBlock(
+          Vector2.all(100),
+          Vector2.all(10),
+          onComponentTypeCheck: (other) {
+            if (other is Water) {
+              return false;
+            }
+            return true;
+          },
+        );
+
+        await game.ensureAddAll([water, brick, block]);
+
+        // block <== collides with  ==> water
+        // But as [TestBlock.onComponentTypeCheck] returns false with Water,
+        // they do not actually start to collide.
+        block.position = Vector2.all(5);
+        game.update(0);
+
+        expect(block.startCounter, 0);
+        expect(block.onCollisionCounter, 0);
+        expect(block.endCounter, 0);
+
+        // block <== collides with  ==> brick
+        block.position = Vector2.all(55);
+        game.update(0);
+
+        expect(block.startCounter, 1);
+        expect(block.onCollisionCounter, 1);
+        expect(block.endCounter, 0);
+      },
+    );
   });
 }

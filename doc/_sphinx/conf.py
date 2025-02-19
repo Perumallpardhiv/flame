@@ -4,11 +4,15 @@
 # list see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 import docutils
+import docutils.nodes
 import html
 import os
 import sys
 sys.path.insert(0, os.path.abspath('.'))
 
+root_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..', '..')
+)
 
 # -- Project information -----------------------------------------------------
 
@@ -20,21 +24,26 @@ root_doc = "index"
 
 # -- General configuration ---------------------------------------------------
 
+primary_domain = 'dart'
+
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
     'myst_parser',  # Markdown support
     'sphinxcontrib.mermaid',
+    'extensions.dart_domain',
     'extensions.flutter_app',
     'extensions.package',
     'extensions.yarn_lexer',
+    'sphinxcontrib.jquery',
+    'sphinx_copybutton'
 ]
 
 # Configuration options for MyST:
 # https://myst-parser.readthedocs.io/en/latest/syntax/optional.html
 myst_enable_extensions = [
-    'attrs_image',
+    'attrs_inline',
     'colon_fence',
     'deflist',
     'dollarmath',
@@ -61,6 +70,12 @@ linkcheck_ignore = [
     r'https://pub.dev/documentation/flame/--VERSION--/',
 ]
 
+# -- Options for dartdoc extension -------------------------------------------
+dartdoc_roots = {
+    'flame': os.path.join(root_dir, 'packages/flame/lib'),
+    'jenny': os.path.join(root_dir, 'packages/flame_jenny/jenny/lib'),
+}
+
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.
@@ -78,6 +93,7 @@ pygments_style = 'monokai'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['images', 'scripts', 'theme']
 html_js_files = ['versions.js', 'menu-expand.js']
+html_css_files = ["copy-button.css"]
 
 
 # -- Custom setup ------------------------------------------------------------

@@ -2,17 +2,16 @@ import 'dart:math';
 
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flame/game.dart';
 import 'package:flame_test/flame_test.dart';
 import 'package:flutter/animation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
-abstract class Callback {
+abstract class _Callback {
   void call();
 }
 
-class CallbackMock extends Mock implements Callback {}
+class _CallbackMock extends Mock implements _Callback {}
 
 void main() {
   group('EffectController', () {
@@ -166,11 +165,10 @@ void main() {
       expect(ec.isInfinite, true);
     });
 
-    test('with speed', () async {
+    testWithFlameGame('with speed', (game) async {
       final ec = EffectController(speed: 1);
       expect(ec.duration, isNaN);
 
-      final game = FlameGame()..onGameResize(Vector2.zero());
       final component = PositionComponent();
       final effect = MoveEffect.by(Vector2(10, 0), ec);
       component.add(effect);
@@ -320,13 +318,13 @@ void main() {
     });
 
     test('onMax and onMin callbacks', () {
-      final mockOnMax = CallbackMock();
-      final mockOnMin = CallbackMock();
+      final mockOnMax = _CallbackMock();
+      final mockOnMin = _CallbackMock();
       final ec = EffectController(
         duration: 1,
         reverseDuration: 1,
-        onMax: mockOnMax,
-        onMin: mockOnMin,
+        onMax: mockOnMax.call,
+        onMin: mockOnMin.call,
         infinite: true,
       );
 

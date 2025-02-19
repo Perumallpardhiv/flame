@@ -1,11 +1,11 @@
 import 'dart:ui';
 
+import 'package:flame/camera.dart';
 import 'package:flame/components.dart';
-import 'package:flame/experimental.dart';
-import 'package:flame/game.dart' hide Viewport;
+import 'package:flame/events.dart';
+import 'package:flame/game.dart';
 
-class CameraComponentPropertiesExample extends FlameGame
-    with HasTappableComponents {
+class CameraComponentPropertiesExample extends FlameGame {
   static const description = '''
     This example uses FixedSizeViewport which is dynamically sized and 
     positioned based on the size of the game widget.
@@ -15,35 +15,62 @@ class CameraComponentPropertiesExample extends FlameGame
     declare its "center" half-way between the bottom left corner and the true
     center.
     
+    The thin yellow rectangle shows the camera's [visibleWorldRect]. It should
+    be visible along the edge of the viewport. 
+    
     Click at any point within the viewport to create a circle there.
   ''';
 
-  CameraComponent? _camera;
+  CameraComponentPropertiesExample()
+      : super(
+          camera: CameraComponent(
+            viewport: FixedSizeViewport(200, 200)..add(ViewportFrame()),
+          )
+            ..viewfinder.zoom = 5
+            ..viewfinder.anchor = const Anchor(0.25, 0.75),
+        );
+
+  late RectangleComponent _cullRect;
 
   @override
   Color backgroundColor() => const Color(0xff333333);
 
   @override
   Future<void> onLoad() async {
-    final world = World();
     world.add(Background());
-    _camera = CameraComponent(
-      world: world,
-      viewport: FixedSizeViewport(200, 200)..add(ViewportFrame()),
-    )
-      ..viewfinder.zoom = 5
-      ..viewfinder.anchor = const Anchor(0.25, 0.75);
-    await add(world);
-    await add(_camera!);
-    onGameResize(canvasSize);
+    _cullRect = RectangleComponent.fromRect(
+      Rect.zero,
+      paint: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.25
+        ..color = const Color(0xaaffff00),
+    );
+    await world.add(_cullRect);
+    camera.mounted.then((_) {
+      updateSize(canvasSize);
+    });
   }
 
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
-    _camera?.viewport.anchor = Anchor.center;
-    _camera?.viewport.size = size * 0.7;
-    _camera?.viewport.position = size * 0.6;
+    if (camera.isMounted) {
+      updateSize(size);
+    }
+  }
+
+  void updateSize(Vector2 size) {
+    camera.viewport.anchor = Anchor.center;
+    camera.viewport.size = size * 0.7;
+    camera.viewport.position = size * 0.6;
+    _cullRect.position = Vector2(
+      camera.visibleWorldRect.left + 1,
+      camera.visibleWorldRect.top + 1,
+    );
+    _cullRect.size = Vector2(
+      camera.visibleWorldRect.width - 2,
+      camera.visibleWorldRect.height - 2,
+    );
   }
 }
 
@@ -120,7 +147,7 @@ class ExpandingCircle extends CircleComponent {
       removeFromParent();
     } else {
       final opacity = 1 - radius / maxRadius;
-      paint.color = const Color(0xffffffff).withOpacity(opacity);
+      paint.color = const Color(0xffffffff).withValues(alpha: opacity);
     }
   }
 }

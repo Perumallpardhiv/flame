@@ -3,14 +3,21 @@ import 'dart:convert' show base64, json;
 import 'dart:ui';
 
 import 'package:flame/src/flame.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
 class Images {
-  Images({String prefix = 'assets/images/'}) {
-    this.prefix = prefix;
-  }
+  Images({
+    String prefix = 'assets/images/',
+    AssetBundle? bundle,
+  })  : _prefix = prefix,
+        bundle = bundle ?? Flame.bundle;
 
   final Map<String, _ImageAsset> _assets = {};
+
+  /// The [AssetBundle] from which images are loaded.
+  /// defaults to [Flame.bundle].
+  AssetBundle bundle;
 
   /// Path prefix to the project's directory with images.
   ///
@@ -39,6 +46,14 @@ class Images {
   /// dispose of it at the end.
   void add(String name, Image image) {
     _assets[name]?.dispose();
+    _assets[name] = _ImageAsset.fromImage(image);
+  }
+
+  /// Transform the base64 encoded image into an [Image] and adds it into the
+  /// cache.
+  Future<void> addFromBase64Data(String name, String base64Data) async {
+    _assets[name]?.dispose();
+    final image = await _fetchFromBase64(base64Data);
     _assets[name] = _ImageAsset.fromImage(image);
   }
 
@@ -125,7 +140,7 @@ class Images {
   /// Loads all images in the [prefix]ed path that are matching the specified
   /// pattern.
   Future<List<Image>> loadAllFromPattern(Pattern pattern) async {
-    final manifestContent = await rootBundle.loadString('AssetManifest.json');
+    final manifestContent = await bundle.loadString('AssetManifest.json');
     final manifestMap = json.decode(manifestContent) as Map<String, dynamic>;
     final imagePaths = manifestMap.keys.where((path) {
       return path.startsWith(_prefix) && path.toLowerCase().contains(pattern);
@@ -135,6 +150,9 @@ class Images {
 
   /// Whether the cache contains the specified [key] or not.
   bool containsKey(String key) => _assets.containsKey(key);
+
+  /// Returns the list of keys in the cache.
+  List<String> get keys => _assets.keys.toList();
 
   String? findKeyForImage(Image image) {
     return _assets.keys.firstWhere(
@@ -155,19 +173,13 @@ class Images {
   Future<Image> _fetchFromBase64(String base64Data) {
     final data = base64Data.substring(base64Data.indexOf(',') + 1);
     final bytes = base64.decode(data);
-    return _loadBytes(bytes);
+    return decodeImageFromList(bytes);
   }
 
   Future<Image> _fetchToMemory(String name) async {
-    final data = await Flame.bundle.load('$_prefix$name');
+    final data = await bundle.load('$_prefix$name');
     final bytes = Uint8List.view(data.buffer);
-    return _loadBytes(bytes);
-  }
-
-  Future<Image> _loadBytes(Uint8List bytes) {
-    final completer = Completer<Image>();
-    decodeImageFromList(bytes, completer.complete);
-    return completer.future;
+    return decodeImageFromList(bytes);
   }
 }
 

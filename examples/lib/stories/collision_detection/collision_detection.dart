@@ -4,12 +4,15 @@ import 'package:examples/stories/collision_detection/bouncing_ball_example.dart'
 import 'package:examples/stories/collision_detection/circles_example.dart';
 import 'package:examples/stories/collision_detection/collidable_animation_example.dart';
 import 'package:examples/stories/collision_detection/multiple_shapes_example.dart';
+import 'package:examples/stories/collision_detection/multiple_worlds_example.dart';
 import 'package:examples/stories/collision_detection/quadtree_example.dart';
 import 'package:examples/stories/collision_detection/raycast_example.dart';
 import 'package:examples/stories/collision_detection/raycast_light_example.dart';
 import 'package:examples/stories/collision_detection/raycast_max_distance_example.dart';
+import 'package:examples/stories/collision_detection/rays_in_shape_example.dart';
 import 'package:examples/stories/collision_detection/raytrace_example.dart';
 import 'package:flame/game.dart';
+import 'package:flutter/widgets.dart';
 
 void addCollisionDetectionStories(Dashbook dashbook) {
   dashbook.storiesOf('Collision Detection')
@@ -34,9 +37,15 @@ void addCollisionDetectionStories(Dashbook dashbook) {
     )
     ..add(
       'Multiple shapes',
-      (_) => GameWidget(game: MultipleShapesExample()),
+      (_) => ClipRect(child: GameWidget(game: MultipleShapesExample())),
       codeLink: baseLink('collision_detection/multiple_shapes_example.dart'),
       info: MultipleShapesExample.description,
+    )
+    ..add(
+      'Multiple worlds',
+      (_) => GameWidget(game: MultipleWorldsExample()),
+      codeLink: baseLink('collision_detection/multiple_worlds_example.dart'),
+      info: MultipleWorldsExample.description,
     )
     ..add(
       'QuadTree collision',
@@ -68,5 +77,11 @@ void addCollisionDetectionStories(Dashbook dashbook) {
       codeLink:
           baseLink('collision_detection/raycast_max_distance_example.dart'),
       info: RaycastMaxDistanceExample.description,
+    )
+    ..add(
+      'Ray inside/outside shapes',
+      (_) => GameWidget(game: RaysInShapeExample()),
+      codeLink: baseLink('collision_detection/rays_in_shape_example.dart'),
+      info: RaysInShapeExample.description,
     );
 }

@@ -51,8 +51,8 @@ final yarn = YarnProject()
   <!-- markdownlint-enable MD006 MD007 -->
 
 **functions** `FunctionStorage`
-: The container for all user-defined functions linked into the project. The main reason to access
-  this property is to register new custom function to be available at runtime.
+: The [container][FunctionStorage] for all user-defined functions linked into the project. The main
+  reason to access this property is to register new custom function to be available at runtime.
 
   Note that all custom functions must be added to the `YarnProject` before they can be used in a
   dialogue script -- otherwise a compile error will occur when encountering an unknown function.
@@ -62,6 +62,24 @@ final yarn = YarnProject()
   reason to access this container is to register new custom commands.
 
   All custom commands must be added before they can be used in the dialogue script.
+
+**characters** `CharacterStorage`
+: The [container][CharacterStorage] for all [Character] objects declared in your yarn scripts.
+
+**strictCharacterNames** `bool`
+: If `true` (default), the validity of character names will be strictly enforced. That is, all
+  characters must be declared before they can be used, using the [\<\<character\>\>] commands. If
+  this property is set to false, then new [Character] objects will be created automatically as
+  they are encountered in scripts.
+
+**trueValues**, **falseValues** `Set<String>`
+: The strings that can be recognized as `true`/`false` values respectively.
+
+**variables** `VariableStorage`
+: The [container][VariableStorage] for all variables declared and manipulated in your yarn scripts.
+  This is also used for maintaining the visit counts for nodes that the user has visited. To
+  implement a 'save game' feature it is possible to save the variables from
+  `VariableStorage.variables` and later restore them again.
 
 
 ## Methods
@@ -74,5 +92,10 @@ final yarn = YarnProject()
   existing ones.
 
 
+[\<\<character\>\>]: ../language/commands/character.md
+[Character]: character.md
+[CharacterStorage]: character_storage.md
 [CommandStorage]: command_storage.md
+[FunctionStorage]: function_storage.md
 [Node]: node.md
+[VariableStorage]: variable_storage.md

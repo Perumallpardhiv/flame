@@ -35,7 +35,13 @@ class _Lexer {
         lineStart = 0,
         tokens = [],
         modeStack = [],
-        indentStack = [];
+        indentStack = [],
+        assert(
+          commandTokens.length ==
+              simpleCommands.length +
+                  bareExpressionCommands.length +
+                  nodeTargetingCommands.length,
+        );
 
   final String text;
   final List<Token> tokens;
@@ -60,7 +66,7 @@ class _Lexer {
     indentStack.add(0);
     pushMode(modeMain);
     while (!eof) {
-      final ok = (modeStack.last)();
+      final ok = modeStack.last();
       if (!ok) {
         error('invalid token');
       }
@@ -229,11 +235,12 @@ class _Lexer {
                 (bareExpressionCommands.contains(tokens.last) &&
                     pushToken(Token.startExpression, position) &&
                     pushMode(modeCommandExpression)) ||
-                (tokens.last == Token.commandJump &&
+                (nodeTargetingCommands.contains(tokens.last) &&
                     (eatId() ||
                         (eatExpressionStart() &&
                             pushMode(modeTextExpression)) ||
-                        error('an ID or an expression expected'))) ||
+                        error('an ID or an expression in curly braces '
+                            'expected'))) ||
                 (tokens.last.isCommand && // user-defined commands
                     pushMode(modeCommandText)))) ||
         (eatCommandEnd() && popMode(modeCommand)) ||
@@ -646,9 +653,18 @@ class _Lexer {
         pushToken(Token.closeMarkupTag, position - 2);
       }
       if (tokens.last == Token.closeMarkupTag) {
-        // Self-closing markup tag such as `[img/]`: consume a single whitespace
-        // character after such tag (if present).
-        eat($space);
+        final iterable = tokens.reversed
+            .skipWhile((token) => token != Token.startMarkupTag)
+            .skip(1);
+        if (iterable.isNotEmpty) {
+          final tokenBeforeMarkupStart = iterable.first;
+          if (tokenBeforeMarkupStart.isText &&
+              tokenBeforeMarkupStart.content.endsWith(' ')) {
+            // Self-closing markup tag such as `[img/]`: consume a single
+            // whitespace character after such tag (if present).
+            eat($space);
+          }
+        }
       }
       pushToken(Token.endMarkupTag, position - 1);
       return true;
@@ -773,7 +789,7 @@ class _Lexer {
     return false;
   }
 
-  /// Helper for [_eatNumber]: consumes a simple run of digits.
+  /// Helper for [eatNumber]: consumes a simple run of digits.
   bool eatDigits() {
     var found = false;
     while (!eof) {
@@ -964,6 +980,7 @@ class _Lexer {
     ')': Token.endParenthesis,
   };
   static const Map<String, Token> commandTokens = {
+    'character': Token.commandCharacter,
     'declare': Token.commandDeclare,
     'else': Token.commandElse,
     'elseif': Token.commandElseif,
@@ -973,6 +990,7 @@ class _Lexer {
     'local': Token.commandLocal,
     'set': Token.commandSet,
     'stop': Token.commandStop,
+    'visit': Token.commandVisit,
     'wait': Token.commandWait,
   };
 
@@ -985,12 +1003,18 @@ class _Lexer {
 
   /// Built-in commands that are followed by an expression (without `{}`).
   static final Set<Token> bareExpressionCommands = {
+    Token.commandCharacter,
     Token.commandDeclare,
     Token.commandElseif,
     Token.commandIf,
     Token.commandLocal,
     Token.commandSet,
     Token.commandWait,
+  };
+
+  static final Set<Token> nodeTargetingCommands = {
+    Token.commandJump,
+    Token.commandVisit,
   };
 
   /// Throws a [SyntaxError] with the given [message], augmenting it with the
@@ -1009,7 +1033,8 @@ class _Lexer {
   String _errorMessageAtPosition(int position) {
     final lineEnd = _findLineEnd(position);
     final lineStart = _findLineStart(position);
-    String lineFragment, markerIndent;
+    String lineFragment;
+    String markerIndent;
     if (lineEnd - lineStart <= 74) {
       lineFragment = text.substring(lineStart, lineEnd);
       markerIndent = ' ' * (position - lineStart);

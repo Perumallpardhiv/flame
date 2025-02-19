@@ -5,10 +5,14 @@ import 'package:examples/stories/components/components_notifier_example.dart';
 import 'package:examples/stories/components/components_notifier_provider_example.dart';
 import 'package:examples/stories/components/composability_example.dart';
 import 'package:examples/stories/components/debug_example.dart';
-import 'package:examples/stories/components/game_in_game_example.dart';
+import 'package:examples/stories/components/has_visibility_example.dart';
+import 'package:examples/stories/components/keys_example.dart';
 import 'package:examples/stories/components/look_at_example.dart';
 import 'package:examples/stories/components/look_at_smooth_example.dart';
 import 'package:examples/stories/components/priority_example.dart';
+import 'package:examples/stories/components/skip_text_box_component_example.dart';
+import 'package:examples/stories/components/spawn_component_example.dart';
+import 'package:examples/stories/components/time_scale_example.dart';
 import 'package:flame/game.dart';
 
 void addComponentsStories(Dashbook dashbook) {
@@ -32,12 +36,6 @@ void addComponentsStories(Dashbook dashbook) {
       info: DebugExample.description,
     )
     ..add(
-      'Game-in-game',
-      (_) => GameWidget(game: GameInGameExample()),
-      codeLink: baseLink('components/game_in_game_example.dart'),
-      info: GameInGameExample.description,
-    )
-    ..add(
       'ClipComponent',
       (context) => GameWidget(game: ClipComponentExample()),
       codeLink: baseLink('components/clip_component_example.dart'),
@@ -58,13 +56,48 @@ void addComponentsStories(Dashbook dashbook) {
     ..add(
       'Component Notifier',
       (_) => const ComponentsNotifierExampleWidget(),
-      codeLink: baseLink('components/component_notifier_example.dart'),
+      codeLink: baseLink('components/components_notifier_example.dart'),
       info: ComponentsNotifierExampleWidget.description,
     )
     ..add(
       'Component Notifier (with provider)',
       (_) => const ComponentsNotifierProviderExampleWidget(),
-      codeLink: baseLink('components/component_notifier_provider_example.dart'),
+      codeLink:
+          baseLink('components/components_notifier_provider_example.dart'),
       info: ComponentsNotifierProviderExampleWidget.description,
+    )
+    ..add(
+      'Spawn Component',
+      (_) => const GameWidget.controlled(
+        gameFactory: SpawnComponentExample.new,
+      ),
+      codeLink: baseLink('components/spawn_component_example.dart'),
+      info: SpawnComponentExample.description,
+    )
+    ..add(
+      'Time Scale',
+      (_) => const GameWidget.controlled(
+        gameFactory: TimeScaleExample.new,
+      ),
+      codeLink: baseLink('components/time_scale_example.dart'),
+      info: TimeScaleExample.description,
+    )
+    ..add(
+      'Component Keys',
+      (_) => const KeysExampleWidget(),
+      codeLink: baseLink('components/keys_example.dart'),
+      info: KeysExampleWidget.description,
+    )
+    ..add(
+      'HasVisibility',
+      (_) => GameWidget(game: HasVisibilityExample()),
+      codeLink: baseLink('components/has_visibility_example.dart'),
+      info: HasVisibilityExample.description,
+    )
+    ..add(
+      'Skip TextBoxComponent',
+      (_) => GameWidget(game: SkipTextBoxComponentExample()),
+      codeLink: baseLink('components/skip_text_box_component_example.dart'),
+      info: SkipTextBoxComponentExample.description,
     );
 }

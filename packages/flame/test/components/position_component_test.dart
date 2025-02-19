@@ -5,6 +5,7 @@ import 'package:canvas_test/canvas_test.dart';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
+import 'package:flame/geometry.dart';
 import 'package:flame_test/flame_test.dart';
 import 'package:test/test.dart';
 
@@ -258,34 +259,33 @@ void main() {
         expect(component.containsPoint(Vector2(1.1, 3.1)), false);
       });
 
-      test('component with hitbox does not contains point', () {
-        final component = _MyHitboxComponent();
-        component.position.setValues(1.0, 1.0);
-        component.anchor = Anchor.topLeft;
-        component.size.setValues(2.0, 2.0);
-        component.add(
-          PolygonHitbox([
-            Vector2(1, 0),
-            Vector2(0, -1),
-            Vector2(-1, 0),
-            Vector2(0, 1),
-          ]),
-        );
+      testWithFlameGame(
+        'component with hitbox does not contain point',
+        (game) async {
+          final component = _MyHitboxComponent()
+            ..addToParent(game)
+            ..position.setValues(1.0, 1.0)
+            ..anchor = Anchor.topLeft
+            ..size.setValues(2.0, 2.0)
+            ..add(
+              PolygonHitbox([
+                Vector2(1, 0),
+                Vector2(0, 1),
+                Vector2(1, 2),
+                Vector2(2, 1),
+              ]),
+            );
+          await game.ready();
+          expect(component.children.length, 1);
 
-        final point = Vector2(1.1, 1.1);
-        expect(component.containsPoint(point), false);
-      });
-
-      test('component with zero size does not contain point', () {
-        final component = PositionComponent();
-        component.position.setValues(2.0, 2.0);
-        component.size.setValues(0.0, 0.0);
-        component.angle = 0.0;
-        component.anchor = Anchor.center;
-
-        final point = Vector2(2.0, 2.0);
-        expect(component.containsPoint(point), false);
-      });
+          expect(component.containsPoint(Vector2.all(1.1)), false);
+          expect(component.containsPoint(Vector2.all(1.4)), false);
+          expect(component.containsPoint(Vector2.all(2.0)), true);
+          expect(component.containsPoint(Vector2.all(2.6)), false);
+          expect(component.containsPoint(Vector2.all(2.9)), false);
+          expect(component.containsPoint(Vector2(2.6, 1.5)), false);
+        },
+      );
 
       test('component with zero size does not contain point', () {
         final component = PositionComponent();
@@ -309,8 +309,8 @@ void main() {
         final topRightPoint = Vector2(bottomRightPoint.x, topLeftPoint.y);
         final bottomLeftPoint = Vector2(topLeftPoint.x, bottomRightPoint.y);
         final epsilon = Vector2.all(0.0001);
-        void checkOutsideCorners(
-          bool expectedResult, {
+        void checkOutsideCorners({
+          required bool expectedResult,
           bool? topLeftResult,
           bool? bottomRightResult,
           bool? topRightResult,
@@ -342,20 +342,20 @@ void main() {
           );
         }
 
-        checkOutsideCorners(false);
+        checkOutsideCorners(expectedResult: false);
         component.scale = Vector2.all(1.0001);
-        checkOutsideCorners(true);
+        checkOutsideCorners(expectedResult: true);
         component.angle = 1;
-        checkOutsideCorners(false);
+        checkOutsideCorners(expectedResult: false);
         component.angle = 0;
         component.anchor = Anchor.topLeft;
-        checkOutsideCorners(false, bottomRightResult: true);
+        checkOutsideCorners(expectedResult: false, bottomRightResult: true);
         component.anchor = Anchor.bottomRight;
-        checkOutsideCorners(false, topLeftResult: true);
+        checkOutsideCorners(expectedResult: false, topLeftResult: true);
         component.anchor = Anchor.topRight;
-        checkOutsideCorners(false, bottomLeftResult: true);
+        checkOutsideCorners(expectedResult: false, bottomLeftResult: true);
         component.anchor = Anchor.bottomLeft;
-        checkOutsideCorners(false, topRightResult: true);
+        checkOutsideCorners(expectedResult: false, topRightResult: true);
       });
     });
 
@@ -388,27 +388,32 @@ void main() {
         );
       });
 
-      test('component with parent has the correct center', () async {
-        final game = FlameGame()..onGameResize(Vector2.all(100));
-        final parent = PositionComponent();
-        parent.position.setValues(2.0, 1.0);
-        parent.anchor = Anchor.topLeft;
-        final child = PositionComponent();
-        child.position.setValues(2.0, 1.0);
-        child.size.setValues(3.0, 1.0);
-        child.angle = 0.0;
-        child.anchor = Anchor.topLeft;
-        parent.add(child);
-        game.add(parent);
-        await game.ready();
+      testWithFlameGame(
+        'component with parent has the correct center',
+        (game) async {
+          final parent = PositionComponent();
+          parent.position.setValues(2.0, 1.0);
+          parent.anchor = Anchor.topLeft;
+          final child = PositionComponent();
+          child.position.setValues(2.0, 1.0);
+          child.size.setValues(3.0, 1.0);
+          child.angle = 0.0;
+          child.anchor = Anchor.topLeft;
+          parent.add(child);
+          game.add(parent);
+          await game.ready();
 
-        expect(child.absoluteTopLeftPosition, child.position + parent.position);
-        expect(
-          child.absoluteTopLeftPosition,
-          child.topLeftPosition + parent.topLeftPosition,
-        );
-        expect(child.absoluteCenter, parent.position + child.center);
-      });
+          expect(
+            child.absoluteTopLeftPosition,
+            child.position + parent.position,
+          );
+          expect(
+            child.absoluteTopLeftPosition,
+            child.topLeftPosition + parent.topLeftPosition,
+          );
+          expect(child.absoluteCenter, parent.position + child.center);
+        },
+      );
     });
 
     group('Coordinates transforms', () {
@@ -736,8 +741,7 @@ void main() {
         expect(comp1.distance(comp2), 50);
       });
 
-      test('deep nested', () async {
-        final game = FlameGame()..onGameResize(Vector2.all(100));
+      testWithFlameGame('deep nested', (game) async {
         final c1 = PositionComponent()..position = Vector2(10, 20);
         final c2 = Component();
         final c3 = PositionComponent()..position = Vector2(-1, -1);
@@ -755,8 +759,7 @@ void main() {
         expect(c5.absoluteToLocal(Vector2(14, 19)), Vector2.zero());
       });
 
-      test('auxiliary getters/setters', () async {
-        final game = FlameGame()..onGameResize(Vector2.all(100));
+      testWithFlameGame('auxiliary getters/setters', (game) async {
         final parent = PositionComponent(position: Vector2(12, 19));
         final child =
             PositionComponent(position: Vector2(11, -1), size: Vector2(4, 6));
@@ -785,7 +788,7 @@ void main() {
           Vector2(0, 1),
           Vector2.all(2),
           Vector2(-1, 0),
-          Vector2.all(-50)
+          Vector2.all(-50),
         ];
         final expectedAngles = [pi, (3 * pi / 4), (-pi / 2), (-pi / 4)];
 
@@ -811,7 +814,7 @@ void main() {
           Vector2(0, 1),
           Vector2.all(2),
           Vector2(-1, 0),
-          Vector2.all(-50)
+          Vector2.all(-50),
         ];
         final expectedAngles = [pi / 2, (pi / 4), -pi, (-3 * pi / 4)];
 
@@ -841,9 +844,9 @@ void main() {
               children: [
                 component = PositionComponent(
                   nativeAngle: -pi,
-                )
+                ),
               ],
-            )
+            ),
           ],
         );
 
@@ -851,7 +854,7 @@ void main() {
           Vector2(0, 1),
           Vector2.all(2),
           Vector2(-1, 0),
-          Vector2.all(-50)
+          Vector2.all(-50),
         ];
         final expectedAngles = [pi, (3 * pi / 4), -pi / 2, (-pi / 4)];
 
@@ -906,7 +909,7 @@ void main() {
           ..position = Vector2(23, 17)
           ..size = Vector2.all(10)
           ..anchor = Anchor.center
-          ..precision = null;
+          ..debugCoordinatesPrecision = null;
         final canvas = MockCanvas();
         component.renderTree(canvas);
         expect(
@@ -916,6 +919,40 @@ void main() {
             ..drawRect(const Rect.fromLTWH(0, 0, 10, 10))
             ..drawLine(const Offset(5, 3), const Offset(5, 7))
             ..drawLine(const Offset(3, 5), const Offset(7, 5))
+            ..translate(0, 0), // canvas.restore
+        );
+      });
+
+      test('render without coordinates and then render with coordinates', () {
+        final component = _MyDebugComponent()
+          ..position = Vector2(23, 17)
+          ..size = Vector2.all(10)
+          ..anchor = Anchor.center
+          ..debugCoordinatesPrecision = null;
+        final withoutCoordinatesCanvas = MockCanvas();
+        component.renderTree(withoutCoordinatesCanvas);
+        expect(
+          withoutCoordinatesCanvas,
+          MockCanvas()
+            ..translate(18, 12)
+            ..drawRect(const Rect.fromLTWH(0, 0, 10, 10))
+            ..drawLine(const Offset(5, 3), const Offset(5, 7))
+            ..drawLine(const Offset(3, 5), const Offset(7, 5))
+            ..translate(0, 0), // canvas.restore
+        );
+
+        component.debugCoordinatesPrecision = 0;
+        final withCoordinatesCanvas = MockCanvas();
+        component.renderTree(withCoordinatesCanvas);
+        expect(
+          withCoordinatesCanvas,
+          MockCanvas()
+            ..translate(18, 12)
+            ..drawRect(const Rect.fromLTWH(0, 0, 10, 10))
+            ..drawLine(const Offset(5, 3), const Offset(5, 7))
+            ..drawLine(const Offset(3, 5), const Offset(7, 5))
+            ..drawParagraph(null, const Offset(-30, -15))
+            ..drawParagraph(null, const Offset(-20, 10))
             ..translate(0, 0), // canvas.restore
         );
       });
@@ -954,7 +991,7 @@ void main() {
         const h = 2.0;
         final component = PositionComponent(size: Vector2(w, h));
         for (var i = 0; i < 10; i++) {
-          final a = (i / 10) * Transform2D.tau / 4;
+          final a = (i / 10) * tau / 4;
           component.angle = a;
           expect(
             component.toRect(),
@@ -968,8 +1005,7 @@ void main() {
         }
       });
 
-      test('absolute toRect', () async {
-        final game = FlameGame()..onGameResize(Vector2.all(100));
+      testWithFlameGame('absolute toRect', (game) async {
         final parent = PositionComponent(
           position: Vector2(10, 10),
           size: Vector2(6, 6),
@@ -991,11 +1027,6 @@ void main() {
 class _MyHitboxComponent extends PositionComponent with GestureHitboxes {}
 
 class _MyDebugComponent extends PositionComponent {
-  int? precision = 0;
-
   @override
   bool get debugMode => true;
-
-  @override
-  int? get debugCoordinatesPrecision => precision;
 }

@@ -1,45 +1,52 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
 import 'package:flutter/rendering.dart';
+import 'package:rive/math.dart';
 import 'package:rive/rive.dart';
-// ignore_for_file: implementation_imports
-import 'package:rive/src/rive_core/math/aabb.dart';
-import 'package:rive/src/rive_core/math/mat2d.dart';
-import 'package:rive/src/rive_core/math/vec2d.dart';
 
 class RiveComponent extends PositionComponent {
   final Artboard artboard;
   final RiveArtboardRenderer _renderer;
+  late Size _renderSize;
 
   RiveComponent({
     required this.artboard,
     bool antialiasing = true,
-    bool useArtboardSize = true,
     BoxFit fit = BoxFit.contain,
     Alignment alignment = Alignment.center,
 
     // position component arguments
     super.position,
-    super.size,
+
+    /// The logical size of the component.
+    /// Default value is ArtboardSize
+    Vector2? size,
     super.scale,
-    double super.angle = 0.0,
-    Anchor super.anchor = Anchor.topLeft,
+    super.angle = 0.0,
+    super.anchor = Anchor.topLeft,
     super.children,
     super.priority,
-  }) : _renderer = RiveArtboardRenderer(
+    super.key,
+  })  : _renderer = RiveArtboardRenderer(
           antialiasing: antialiasing,
-          useArtboardSize: useArtboardSize,
           fit: fit,
           alignment: alignment,
           artboard: artboard,
-        );
+        ),
+        super(size: size ?? Vector2(artboard.width, artboard.height)) {
+    void updateRenderSize() {
+      _renderSize = this.size.toSize();
+    }
+
+    this.size.addListener(updateRenderSize);
+    updateRenderSize();
+  }
 
   @override
-  void render(ui.Canvas canvas) {
-    _renderer.render(canvas, size.toSize());
+  void render(Canvas canvas) {
+    _renderer.render(canvas, _renderSize);
   }
 
   @override
@@ -51,13 +58,11 @@ class RiveComponent extends PositionComponent {
 class RiveArtboardRenderer {
   final Artboard artboard;
   final bool antialiasing;
-  final bool useArtboardSize;
   final BoxFit fit;
   final Alignment alignment;
 
   RiveArtboardRenderer({
     required this.antialiasing,
-    required this.useArtboardSize,
     required this.fit,
     required this.alignment,
     required this.artboard,
@@ -69,17 +74,16 @@ class RiveArtboardRenderer {
     artboard.advance(dt, nested: true);
   }
 
-  AABB get aabb {
-    final width = artboard.width;
-    final height = artboard.height;
-    return AABB.fromValues(0, 0, width, height);
-  }
+  late final aabb = AABB.fromValues(0, 0, artboard.width, artboard.height);
 
-  void render(Canvas canvas, ui.Size size) {
+  void render(Canvas canvas, Size size) {
     _paint(canvas, aabb, size);
   }
 
-  void _paint(Canvas canvas, AABB bounds, ui.Size size) {
+  final _transform = Mat2D();
+  final _center = Mat2D();
+
+  void _paint(Canvas canvas, AABB bounds, Size size) {
     const position = Offset.zero;
 
     final contentWidth = bounds[2] - bounds[0];
@@ -96,55 +100,49 @@ class RiveArtboardRenderer {
         contentHeight / 2.0 -
         (alignment.y * contentHeight / 2.0);
 
-    var scaleX = 1.0, scaleY = 1.0;
+    var scaleX = 1.0;
+    var scaleY = 1.0;
 
     canvas.save();
-    canvas.clipRect(position & size);
+    if (artboard.clip) {
+      canvas.clipRect(position & size);
+    }
 
-    // fit
     switch (fit) {
       case BoxFit.fill:
         scaleX = size.width / contentWidth;
         scaleY = size.height / contentHeight;
-        break;
       case BoxFit.contain:
         final minScale =
             min(size.width / contentWidth, size.height / contentHeight);
         scaleX = scaleY = minScale;
-        break;
       case BoxFit.cover:
         final maxScale =
             max(size.width / contentWidth, size.height / contentHeight);
         scaleX = scaleY = maxScale;
-        break;
       case BoxFit.fitHeight:
         final minScale = size.height / contentHeight;
         scaleX = scaleY = minScale;
-        break;
       case BoxFit.fitWidth:
         final minScale = size.width / contentWidth;
         scaleX = scaleY = minScale;
-        break;
       case BoxFit.none:
         scaleX = scaleY = 1.0;
-        break;
       case BoxFit.scaleDown:
         final minScale =
             min(size.width / contentWidth, size.height / contentHeight);
         scaleX = scaleY = minScale < 1.0 ? minScale : 1.0;
-        break;
     }
 
-    final transform = Mat2D();
-    transform[4] = size.width / 2.0 + (alignment.x * size.width / 2.0);
-    transform[5] = size.height / 2.0 + (alignment.y * size.height / 2.0);
-    Mat2D.scale(transform, transform, Vec2D.fromValues(scaleX, scaleY));
-    final center = Mat2D();
-    center[4] = x;
-    center[5] = y;
-    Mat2D.multiply(transform, transform, center);
+    Mat2D.setIdentity(_transform);
+    _transform[4] = size.width / 2.0 + (alignment.x * size.width / 2.0);
+    _transform[5] = size.height / 2.0 + (alignment.y * size.height / 2.0);
+    Mat2D.scale(_transform, _transform, Vec2D.fromValues(scaleX, scaleY));
+    Mat2D.setIdentity(_center);
+    _center[4] = x;
+    _center[5] = y;
+    Mat2D.multiply(_transform, _transform, _center);
 
-    // translation
     canvas.translate(
       size.width / 2.0 + (alignment.x * size.width / 2.0),
       size.height / 2.0 + (alignment.y * size.height / 2.0),

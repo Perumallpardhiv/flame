@@ -80,7 +80,7 @@ void main() {
             '===\n',
           ),
         hasSyntaxError(
-          'SyntaxError: an ID or an expression expected\n'
+          'SyntaxError: an ID or an expression in curly braces expected\n'
           '>  at line 3 column 8:\n'
           '>  <<jump 1>>\n'
           '>         ^\n',
@@ -105,7 +105,7 @@ void main() {
       );
     });
 
-    test('<<jump>> with unknown destination', () async {
+    test('<<jump>> with unknown destination', () {
       final yarn = YarnProject()
         ..parse(
           'title:A\n'
@@ -114,7 +114,8 @@ void main() {
           '===\n',
         );
       expect(
-        () => DialogueRunner(yarnProject: yarn, dialogueViews: []).runNode('A'),
+        () => DialogueRunner(yarnProject: yarn, dialogueViews: [])
+            .startDialogue('A'),
         hasNameError('NameError: Node "Up" could not be found'),
       );
     });

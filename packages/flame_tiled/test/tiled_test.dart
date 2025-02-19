@@ -1,36 +1,63 @@
-import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flame/cache.dart';
 import 'package:flame/components.dart';
 import 'package:flame/extensions.dart';
 import 'package:flame/flame.dart';
 import 'package:flame/game.dart';
 import 'package:flame_tiled/flame_tiled.dart';
-import 'package:flame_tiled/src/renderable_layers/tile_layer.dart';
+import 'package:flame_tiled/src/renderable_layers/tile_layers/tile_layer.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'test_asset_bundle.dart';
 import 'test_image_utils.dart';
 
 void main() {
+  /// This represents the byte count of one pixel.
+  ///
+  /// Usually, Color is represented as [Uint8List] and Uint8 has the ability to
+  /// store 0 - 255(8 bit = 1 byte) per index. And it can be interpreted
+  /// as [Color] by using 4 indexes of [Uint8List] into one.
+  /// Examples:
+  ///   RGBA [255, 0, 0 255] => red,
+  ///   RGBA [255, 255, 0 255] => Yellow.
+  const pixel = 4;
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(TiledAtlas.atlasMap.clear);
   group('TiledComponent', () {
     late TiledComponent tiled;
     setUp(() async {
       Flame.bundle = TestAssetBundle(
         imageNames: ['map-level1.png', 'image1.png'],
-        mapPath: 'test/assets/map.tmx',
+        stringNames: ['map.tmx', 'tiles_custom_path/map_custom_path.tmx'],
       );
-      tiled = await TiledComponent.load('x', Vector2.all(16));
+      tiled = await TiledComponent.load('map.tmx', Vector2.all(16));
     });
 
-    test('correct loads the file', () async {
+    test('correct loads the file', () {
+      expect(tiled.tileMap.renderableLayers.length, equals(4));
+    });
+
+    test('component atlases returns the loaded atlases', () {
+      final atlases = tiled.atlases();
+      expect(atlases, hasLength(1));
+      expect(atlases.first.$1, equals('map-level1.png'));
+    });
+
+    test('correct loads the file, with different prefix', () async {
+      tiled = await TiledComponent.load(
+        'map_custom_path.tmx',
+        Vector2.all(16),
+        prefix: 'assets/tiles/tiles_custom_path/',
+      );
+
       expect(tiled.tileMap.renderableLayers.length, equals(3));
     });
 
     group('is positionable', () {
-      test('size, width, and height are readable - not writable', () async {
+      test('size, width, and height are readable - not writable', () {
         expect(tiled.size, Vector2(512.0, 2048.0));
         expect(tiled.width, 512);
         expect(tiled.height, 2048);
@@ -43,7 +70,7 @@ void main() {
         expect(tiled.size, Vector2(512.0, 2048.0));
       });
 
-      test('from constructor', () async {
+      test('from constructor', () {
         final map = TiledComponent(
           tiled.tileMap,
           position: Vector2(10, 20),
@@ -69,11 +96,13 @@ void main() {
     // odd errors if you're trying to debug.
     Flame.bundle = TestAssetBundle(
       imageNames: ['map-level1.png', 'image1.png'],
-      mapPath: 'test/assets/map.tmx',
+      stringNames: ['map.tmx', 'tiles/external_tileset_1.tsx'],
     );
 
-    final tsxProvider =
-        await FlameTsxProvider.parse('tiles/external_tileset_1.tsx');
+    final tsxProvider = await FlameTsxProvider.parse(
+      'tiles/external_tileset_1.tsx',
+      Flame.bundle,
+    );
 
     expect(tsxProvider.getCachedSource() != null, true);
     final source = tsxProvider.getCachedSource()!;
@@ -90,20 +119,55 @@ void main() {
     );
   });
 
+  test('correctly loads external tileset with custom path', () async {
+    // Flame.bundle is a global static. Updating these in tests can lead to
+    // odd errors if you're trying to debug.
+    Flame.bundle = TestAssetBundle(
+      imageNames: ['map-level1.png', 'image1.png'],
+      stringNames: [
+        'map.tmx',
+        'tiles_custom_path/external_tileset_custom_path.tsx',
+      ],
+    );
+
+    // TestAssetBundle strips assets/tiles/ from the prefix.
+    final tsxProvider = await FlameTsxProvider.parse(
+      'external_tileset_custom_path.tsx',
+      Flame.bundle,
+      'assets/tiles/tiles_custom_path/',
+    );
+
+    expect(tsxProvider.getCachedSource() != null, true);
+    final source = tsxProvider.getCachedSource()!;
+    expect(source.getStringOrNull('name'), 'level1');
+    expect(source.getSingleChildOrNull('image'), isNotNull);
+    expect(
+      source.getSingleChildOrNull('image')!.getStringOrNull('width'),
+      '272',
+    );
+
+    expect(
+      tsxProvider.filename == 'external_tileset_custom_path.tsx',
+      true,
+    );
+  });
+
   group('Layered tiles render correctly with layered sprite batch', () {
     late Uint8List canvasPixelData;
     late RenderableTiledMap overlapMap;
     setUp(() async {
-      Flame.bundle = TestAssetBundle(
+      final bundle = TestAssetBundle(
         imageNames: [
           'green_sprite.png',
           'red_sprite.png',
         ],
-        mapPath: 'test/assets/2_tiles-green_on_red.tmx',
+        stringNames: ['2_tiles-green_on_red.tmx'],
       );
       overlapMap = await RenderableTiledMap.fromFile(
         '2_tiles-green_on_red.tmx',
         Vector2.all(16),
+        bundle: bundle,
+        images: Images(bundle: bundle),
       );
       final canvasRecorder = PictureRecorder();
       final canvas = Canvas(canvasRecorder);
@@ -123,26 +187,26 @@ void main() {
     test(
       'Canvas pixel dimensions match',
       () => expect(
-        canvasPixelData.length == 16 * 32 * 4,
+        canvasPixelData.length == 16 * 32 * pixel,
         true,
       ),
     );
 
     test('Base test - right tile pixel is red', () {
       expect(
-        canvasPixelData[16 * 4] == 255 &&
-            canvasPixelData[(16 * 4) + 1] == 0 &&
-            canvasPixelData[(16 * 4) + 2] == 0 &&
-            canvasPixelData[(16 * 4) + 3] == 255,
+        canvasPixelData[16 * pixel] == 255 &&
+            canvasPixelData[(16 * pixel) + 1] == 0 &&
+            canvasPixelData[(16 * pixel) + 2] == 0 &&
+            canvasPixelData[(16 * pixel) + 3] == 255,
         true,
       );
       final rightTilePixels = <int>[];
-      for (var i = 16 * 4; i < 16 * 32 * 4; i += 32 * 4) {
-        rightTilePixels.addAll(canvasPixelData.getRange(i, i + (16 * 4)));
+      for (var i = 16 * pixel; i < 16 * 32 * pixel; i += 32 * pixel) {
+        rightTilePixels.addAll(canvasPixelData.getRange(i, i + (16 * pixel)));
       }
 
       var allRed = true;
-      for (var i = 0; i < rightTilePixels.length; i += 4) {
+      for (var i = 0; i < rightTilePixels.length; i += pixel) {
         allRed &= rightTilePixels[i] == 255 &&
             rightTilePixels[i + 1] == 0 &&
             rightTilePixels[i + 2] == 0 &&
@@ -153,20 +217,20 @@ void main() {
 
     test('Left tile pixel is green', () {
       expect(
-        canvasPixelData[15 * 4] == 0 &&
-            canvasPixelData[(15 * 4) + 1] == 255 &&
-            canvasPixelData[(15 * 4) + 2] == 0 &&
-            canvasPixelData[(15 * 4) + 3] == 255,
+        canvasPixelData[15 * pixel] == 0 &&
+            canvasPixelData[(15 * pixel) + 1] == 255 &&
+            canvasPixelData[(15 * pixel) + 2] == 0 &&
+            canvasPixelData[(15 * pixel) + 3] == 255,
         true,
       );
 
       final leftTilePixels = <int>[];
-      for (var i = 0; i < 15 * 32 * 4; i += 32 * 4) {
-        leftTilePixels.addAll(canvasPixelData.getRange(i, i + (16 * 4)));
+      for (var i = 0; i < 15 * 32 * pixel; i += 32 * pixel) {
+        leftTilePixels.addAll(canvasPixelData.getRange(i, i + (16 * pixel)));
       }
 
       var allGreen = true;
-      for (var i = 0; i < leftTilePixels.length; i += 4) {
+      for (var i = 0; i < leftTilePixels.length; i += pixel) {
         allGreen &= leftTilePixels[i] == 0 &&
             leftTilePixels[i + 1] == 255 &&
             leftTilePixels[i + 2] == 0 &&
@@ -177,47 +241,52 @@ void main() {
   });
 
   group('Flipped and rotated tiles render correctly with sprite batch:', () {
-    late Uint8List canvasPixelData, canvasPixelDataAtlas;
+    late Uint8List pixelsBeforeFlipApplied;
+    late Uint8List pixelsAfterFlipApplied;
     late RenderableTiledMap overlapMap;
-    setUp(() async {
-      Flame.bundle = TestAssetBundle(
-        imageNames: [
-          '4_color_sprite.png',
-        ],
-        mapPath: 'test/assets/8_tiles-flips.tmx',
-      );
-      overlapMap = await RenderableTiledMap.fromFile(
-        '8_tiles-flips.tmx',
-        Vector2.all(16),
-      );
+
+    Future<Uint8List> renderMap() async {
       final canvasRecorder = PictureRecorder();
       final canvas = Canvas(canvasRecorder);
       overlapMap.render(canvas);
       final picture = canvasRecorder.endRecording();
 
-      final image = await picture.toImageSafe(64, 48);
+      final image = await picture.toImageSafe(64, 32);
       final bytes = await image.toByteData();
-      canvasPixelData = bytes!.buffer.asUint8List();
+      return bytes!.buffer.asUint8List();
+    }
 
+    setUp(() async {
+      final bundle = TestAssetBundle(
+        imageNames: [
+          '4_color_sprite.png',
+        ],
+        stringNames: ['8_tiles-flips.tmx'],
+      );
+      overlapMap = await RenderableTiledMap.fromFile(
+        '8_tiles-flips.tmx',
+        Vector2.all(16),
+        bundle: bundle,
+        images: Images(bundle: bundle),
+      );
+
+      pixelsBeforeFlipApplied = await renderMap();
       await Flame.images.ready();
-      final canvasRecorderAtlas = PictureRecorder();
-      final canvasAtlas = Canvas(canvasRecorderAtlas);
-      overlapMap.render(canvasAtlas);
-      final pictureAtlas = canvasRecorderAtlas.endRecording();
-
-      final imageAtlas = await pictureAtlas.toImageSafe(64, 48);
-      final bytesAtlas = await imageAtlas.toByteData();
-      canvasPixelDataAtlas = bytesAtlas!.buffer.asUint8List();
+      pixelsAfterFlipApplied = await renderMap();
     });
 
     test('[useAtlas = true] Green tile pixels are in correct spots', () {
+      const oneColorRect = 8;
       final leftTilePixels = <int>[];
-      for (var i = 65 * 8 * 4; i < ((64 * 23) + (8 * 3)) * 4; i += 64 * 4) {
-        leftTilePixels.addAll(canvasPixelDataAtlas.getRange(i, i + (16 * 4)));
+      for (var i = 65 * oneColorRect * pixel;
+          i < ((64 * 23) + (oneColorRect * 3)) * pixel;
+          i += 64 * pixel) {
+        leftTilePixels
+            .addAll(pixelsAfterFlipApplied.getRange(i, i + (16 * pixel)));
       }
 
       var allGreen = true;
-      for (var i = 0; i < leftTilePixels.length; i += 4) {
+      for (var i = 0; i < leftTilePixels.length; i += pixel) {
         allGreen &= leftTilePixels[i] == 0 &&
             leftTilePixels[i + 1] == 255 &&
             leftTilePixels[i + 2] == 0 &&
@@ -226,11 +295,14 @@ void main() {
       expect(allGreen, true);
 
       final rightTilePixels = <int>[];
-      for (var i = 69 * 8 * 4; i < ((64 * 23) + (8 * 7)) * 4; i += 64 * 4) {
-        rightTilePixels.addAll(canvasPixelDataAtlas.getRange(i, i + (16 * 4)));
+      for (var i = 69 * 8 * pixel;
+          i < ((64 * 23) + (8 * 7)) * pixel;
+          i += 64 * pixel) {
+        rightTilePixels
+            .addAll(pixelsAfterFlipApplied.getRange(i, i + (16 * pixel)));
       }
 
-      for (var i = 0; i < rightTilePixels.length; i += 4) {
+      for (var i = 0; i < rightTilePixels.length; i += pixel) {
         allGreen &= rightTilePixels[i] == 0 &&
             rightTilePixels[i + 1] == 255 &&
             rightTilePixels[i + 2] == 0 &&
@@ -241,12 +313,15 @@ void main() {
 
     test('[useAtlas = false] Green tile pixels are in correct spots', () {
       final leftTilePixels = <int>[];
-      for (var i = 65 * 8 * 4; i < ((64 * 23) + (8 * 3)) * 4; i += 64 * 4) {
-        leftTilePixels.addAll(canvasPixelData.getRange(i, i + (16 * 4)));
+      for (var i = 65 * 8 * pixel;
+          i < ((64 * 23) + (8 * 3)) * pixel;
+          i += 64 * pixel) {
+        leftTilePixels
+            .addAll(pixelsBeforeFlipApplied.getRange(i, i + (16 * pixel)));
       }
 
       var allGreen = true;
-      for (var i = 0; i < leftTilePixels.length; i += 4) {
+      for (var i = 0; i < leftTilePixels.length; i += pixel) {
         allGreen &= leftTilePixels[i] == 0 &&
             leftTilePixels[i + 1] == 255 &&
             leftTilePixels[i + 2] == 0 &&
@@ -255,11 +330,14 @@ void main() {
       expect(allGreen, true);
 
       final rightTilePixels = <int>[];
-      for (var i = 69 * 8 * 4; i < ((64 * 23) + (8 * 7)) * 4; i += 64 * 4) {
-        rightTilePixels.addAll(canvasPixelData.getRange(i, i + (16 * 4)));
+      for (var i = 69 * 8 * pixel;
+          i < ((64 * 23) + (8 * 7)) * pixel;
+          i += 64 * pixel) {
+        rightTilePixels
+            .addAll(pixelsBeforeFlipApplied.getRange(i, i + (16 * pixel)));
       }
 
-      for (var i = 0; i < rightTilePixels.length; i += 4) {
+      for (var i = 0; i < rightTilePixels.length; i += pixel) {
         allGreen &= rightTilePixels[i] == 0 &&
             rightTilePixels[i + 1] == 255 &&
             rightTilePixels[i + 2] == 0 &&
@@ -269,48 +347,101 @@ void main() {
     });
   });
 
+  group('ignoring flip makes different texture and rendering result', () {
+    Image? texture;
+    Uint8List? rendered;
+
+    Future<void> prepareForGolden({required bool ignoreFlip}) async {
+      final bundle = TestAssetBundle(
+        imageNames: [
+          '4_color_sprite.png',
+        ],
+        stringNames: ['8_tiles-flips.tmx'],
+      );
+      final tiledComponent = TiledComponent(
+        await RenderableTiledMap.fromFile(
+          '8_tiles-flips.tmx',
+          Vector2.all(16),
+          ignoreFlip: ignoreFlip,
+          bundle: bundle,
+          images: Images(bundle: bundle),
+        ),
+      );
+
+      await Flame.images.ready();
+
+      texture = (tiledComponent.tileMap.renderableLayers[0] as FlameTileLayer)
+          .tiledAtlas
+          .batch
+          ?.atlas;
+
+      rendered = await renderMapToPng(tiledComponent);
+    }
+
+    test('flip works with [ignoreFlip = false]', () async {
+      await prepareForGolden(ignoreFlip: false);
+      expect(texture, matchesGoldenFile('goldens/texture_with_flip.png'));
+      expect(rendered, matchesGoldenFile('goldens/rendered_with_flip.png'));
+    });
+
+    test('flip ignored with [ignoreFlip = true]', () async {
+      await prepareForGolden(ignoreFlip: true);
+      expect(
+        texture,
+        matchesGoldenFile('goldens/texture_with_flip_ignored.png'),
+      );
+      expect(
+        rendered,
+        matchesGoldenFile('goldens/rendered_with_flip_ignored.png'),
+      );
+    });
+  });
+
   group('Test getLayer:', () {
-    late RenderableTiledMap _renderableTiledMap;
+    late RenderableTiledMap renderableTiledMap;
     setUp(() async {
       Flame.bundle = TestAssetBundle(
         imageNames: ['map-level1.png'],
-        mapPath: 'test/assets/layers_test.tmx',
+        stringNames: ['layers_test.tmx'],
       );
-      _renderableTiledMap =
-          await RenderableTiledMap.fromFile('layers_test.tmx', Vector2.all(32));
+      renderableTiledMap = await RenderableTiledMap.fromFile(
+        'layers_test.tmx',
+        Vector2.all(32),
+        bundle: Flame.bundle,
+      );
     });
 
     test('Get Tile Layer', () {
       expect(
-        _renderableTiledMap.getLayer<TileLayer>('MyTileLayer'),
+        renderableTiledMap.getLayer<TileLayer>('MyTileLayer'),
         isNotNull,
       );
     });
 
     test('Get Object Layer', () {
       expect(
-        _renderableTiledMap.getLayer<ObjectGroup>('MyObjectLayer'),
+        renderableTiledMap.getLayer<ObjectGroup>('MyObjectLayer'),
         isNotNull,
       );
     });
 
     test('Get Image Layer', () {
       expect(
-        _renderableTiledMap.getLayer<ImageLayer>('MyImageLayer'),
+        renderableTiledMap.getLayer<ImageLayer>('MyImageLayer'),
         isNotNull,
       );
     });
 
     test('Get Group Layer', () {
       expect(
-        _renderableTiledMap.getLayer<Group>('MyGroupLayer'),
+        renderableTiledMap.getLayer<Group>('MyGroupLayer'),
         isNotNull,
       );
     });
 
     test('Get no layer', () {
       expect(
-        _renderableTiledMap.getLayer<TileLayer>('Nonexistent layer'),
+        renderableTiledMap.getLayer<TileLayer>('Nonexistent layer'),
         isNull,
       );
     });
@@ -326,20 +457,26 @@ void main() {
           'image1.png',
           'map-level1.png',
         ],
-        mapPath: 'test/assets/map.tmx',
+        stringNames: ['map.tmx'],
       );
       component = await TiledComponent.load(
         'map.tmx',
         Vector2(16, 16),
+        bundle: Flame.bundle,
       );
 
       // Need to initialize a game and call `onLoad` and `onGameResize` to
       // get the camera and canvas sizes all initialized
-      final game = FlameGame(children: [component]);
-      component.onLoad();
-      component.onGameResize(mapSizePx);
+      final game = FlameGame();
       game.onGameResize(mapSizePx);
-      game.camera.snapTo(Vector2(150, 20));
+      final camera = game.camera;
+      game.world.add(component);
+      camera.viewfinder.position = Vector2(150, 20);
+      camera.viewport.size = mapSizePx.clone();
+      game.onGameResize(mapSizePx);
+      component.onGameResize(mapSizePx);
+      await component.onLoad();
+      await game.ready();
     });
 
     test('component size', () {
@@ -347,26 +484,31 @@ void main() {
       expect(component.size, mapSizePx);
     });
 
-    test('renders', () async {
-      final pngData = await renderMapToPng(component);
+    test(
+      'renders',
+      () async {
+        final pngData = await renderMapToPng(component);
 
-      expect(pngData, matchesGoldenFile('goldens/orthogonal.png'));
-    });
+        expect(pngData, matchesGoldenFile('goldens/orthogonal.png'));
+      },
+    );
   });
 
   group('isometric', () {
     late TiledComponent component;
 
     setUp(() async {
-      Flame.bundle = TestAssetBundle(
+      final bundle = TestAssetBundle(
         imageNames: [
           'isometric_spritesheet.png',
         ],
-        mapPath: 'test/assets/test_isometric.tmx',
+        stringNames: ['test_isometric.tmx'],
       );
       component = await TiledComponent.load(
         'test_isometric.tmx',
         Vector2(256 / 4, 128 / 4),
+        bundle: bundle,
+        images: Images(bundle: bundle),
       );
     });
 
@@ -392,19 +534,21 @@ void main() {
       String imageFile,
       Vector2 destTileSize,
     ) async {
-      Flame.bundle = TestAssetBundle(
+      final bundle = TestAssetBundle(
         imageNames: [
           imageFile,
         ],
-        mapPath: 'test/assets/$tmxFile',
+        stringNames: [tmxFile],
       );
       return component = await TiledComponent.load(
         tmxFile,
         destTileSize,
+        bundle: bundle,
+        images: Images(bundle: bundle),
       );
     }
 
-    test('flat + even staggerd', () async {
+    test('flat + even staggered', () async {
       await setupMap(
         'flat_hex_even.tmx',
         'Tileset_Hexagonal_FlatTop_60x39_60x60.png',
@@ -418,7 +562,7 @@ void main() {
       expect(pngData, matchesGoldenFile('goldens/flat_hex_even.png'));
     });
 
-    test('flat + odd staggerd', () async {
+    test('flat + odd staggered', () async {
       await setupMap(
         'flat_hex_odd.tmx',
         'Tileset_Hexagonal_FlatTop_60x39_60x60.png',
@@ -432,7 +576,7 @@ void main() {
       expect(pngData, matchesGoldenFile('goldens/flat_hex_odd.png'));
     });
 
-    test('pointy + even staggerd', () async {
+    test('pointy + even staggered', () async {
       await setupMap(
         'pointy_hex_even.tmx',
         'Tileset_Hexagonal_PointyTop_60x52_60x80.png',
@@ -446,7 +590,7 @@ void main() {
       expect(pngData, matchesGoldenFile('goldens/pointy_hex_even.png'));
     });
 
-    test('pointy + odd staggerd', () async {
+    test('pointy + odd staggered', () async {
       await setupMap(
         'pointy_hex_odd.tmx',
         'Tileset_Hexagonal_PointyTop_60x52_60x80.png',
@@ -461,6 +605,99 @@ void main() {
     });
   });
 
+  group('tile offset', () {
+    late TiledComponent component;
+
+    Future<TiledComponent> setupMap(
+      String tmxFile,
+      String imageFile,
+      Vector2 destTileSize,
+    ) async {
+      final bundle = TestAssetBundle(
+        imageNames: [
+          imageFile,
+        ],
+        stringNames: [tmxFile],
+      );
+      return component = await TiledComponent.load(
+        tmxFile,
+        destTileSize,
+        bundle: bundle,
+        images: Images(bundle: bundle),
+      );
+    }
+
+    test('tile offset hexagonal', () async {
+      await setupMap(
+        // flame tiled currently does not support hexagon side length property,
+        // to use export from Tiled, tweak that value
+        'test_tile_offset_hexagonal.tmx',
+        '4_color_sprite.png',
+        Vector2(16, 16),
+      );
+
+      expect(component.size, Vector2(40, 28));
+
+      final pngData = await renderMapToPng(component);
+
+      expect(
+        pngData,
+        matchesGoldenFile('goldens/test_tile_offset_hexagonal.png'),
+      );
+    });
+
+    test('tile offset isometric', () async {
+      await setupMap(
+        'test_tile_offset_isometric.tmx',
+        '4_color_sprite.png',
+        Vector2(16, 16),
+      );
+
+      expect(component.size, Vector2(32, 32));
+
+      final pngData = await renderMapToPng(component);
+
+      expect(
+        pngData,
+        matchesGoldenFile('goldens/test_tile_offset_isometric.png'),
+      );
+    });
+
+    test('tile offset orthogonal', () async {
+      await setupMap(
+        'test_tile_offset_orthogonal.tmx',
+        '4_color_sprite.png',
+        Vector2(16, 16),
+      );
+
+      expect(component.size, Vector2(32, 32));
+
+      final pngData = await renderMapToPng(component);
+
+      expect(
+        pngData,
+        matchesGoldenFile('goldens/test_tile_offset_orthogonal.png'),
+      );
+    });
+
+    test('tile offset staggered', () async {
+      await setupMap(
+        'test_tile_offset_staggered.tmx',
+        '4_color_sprite.png',
+        Vector2(16, 16),
+      );
+
+      expect(component.size, Vector2(40, 24));
+
+      final pngData = await renderMapToPng(component);
+
+      expect(
+        pngData,
+        matchesGoldenFile('goldens/test_tile_offset_staggered.png'),
+      );
+    });
+  });
+
   group('isometric staggered', () {
     late TiledComponent component;
 
@@ -469,15 +706,17 @@ void main() {
       String imageFile,
       Vector2 destTileSize,
     ) async {
-      Flame.bundle = TestAssetBundle(
+      final bundle = TestAssetBundle(
         imageNames: [
           imageFile,
         ],
-        mapPath: 'test/assets/$tmxFile',
+        stringNames: [tmxFile],
       );
       return component = await TiledComponent.load(
         tmxFile,
         destTileSize,
+        bundle: bundle,
+        images: Images(bundle: bundle),
       );
     }
 
@@ -557,15 +796,17 @@ void main() {
     Future<void> setupMap(
       Vector2 destTileSize,
     ) async {
-      Flame.bundle = TestAssetBundle(
+      final bundle = TestAssetBundle(
         imageNames: [
           'isometric_spritesheet.png',
         ],
-        mapPath: 'test/assets/test_shifted.tmx',
+        stringNames: ['test_shifted.tmx'],
       );
       component = await TiledComponent.load(
-        'test_isometric.tmx',
+        'test_shifted.tmx',
         destTileSize,
+        bundle: bundle,
+        images: Images(bundle: bundle),
       );
     }
 
@@ -607,13 +848,18 @@ void main() {
     final size = Vector2(256 / 2, 128 / 2);
 
     setUp(() async {
-      Flame.bundle = TestAssetBundle(
+      final bundle = TestAssetBundle(
         imageNames: [
           'isometric_spritesheet.png',
         ],
-        mapPath: 'test/assets/test_isometric.tmx',
+        stringNames: ['test_isometric.tmx'],
       );
-      component = await TiledComponent.load('test_isometric.tmx', size);
+      component = await TiledComponent.load(
+        'test_isometric.tmx',
+        size,
+        bundle: bundle,
+        images: Images(bundle: bundle),
+      );
     });
     test('from all layers', () {
       var stack = component.tileMap.tileStack(0, 0, all: true);
@@ -669,19 +915,21 @@ void main() {
       'orthogonal',
       'isometric',
       'hexagonal',
-      'staggered'
+      'staggered',
     ]) {
       group(mapType, () {
         setUp(() async {
-          Flame.bundle = TestAssetBundle(
+          final bundle = TestAssetBundle(
             imageNames: [
               '0x72_DungeonTilesetII_v1.4.png',
             ],
-            mapPath: 'test/assets/dungeon_animation_$mapType.tmx',
+            stringNames: ['dungeon_animation_$mapType.tmx'],
           );
           component = await TiledComponent.load(
             'dungeon_animation_$mapType.tmx',
             size,
+            bundle: bundle,
+            images: Images(bundle: bundle),
           );
           map = component.tileMap;
         });
@@ -721,27 +969,27 @@ void main() {
 
           final waterAnimation = layer.animations.first;
           final spikeAnimation = layer.animations.last;
-          expect(waterAnimation.frames.durations, [.18, .17, .15]);
-          expect(spikeAnimation.frames.durations, [.176, .176, .176, .176]);
+          expect(waterAnimation.frames.durations, [0.18, 0.17, 0.15]);
+          expect(spikeAnimation.frames.durations, [0.176, 0.176, 0.176, 0.176]);
 
-          map.update(.177);
+          map.update(0.177);
           expect(waterAnimation.frame, 0);
-          expect(waterAnimation.frames.frameTime, .177);
+          expect(waterAnimation.frames.frameTime, 0.177);
           expect(
             waterAnimation.batchedSource.toRect(),
             waterAnimation.frames.sources[0],
           );
 
           expect(spikeAnimation.frame, 1);
-          expect(spikeAnimation.frames.frameTime, moreOrLessEquals(.001));
+          expect(spikeAnimation.frames.frameTime, moreOrLessEquals(0.001));
           expect(
             spikeAnimation.batchedSource.toRect(),
             spikeAnimation.frames.sources[1],
           );
 
-          map.update(.003);
+          map.update(0.003);
           expect(waterAnimation.frame, 1);
-          expect(waterAnimation.frames.frameTime, moreOrLessEquals(.0));
+          expect(waterAnimation.frames.frameTime, moreOrLessEquals(0.0));
           expect(spikeAnimation.frame, 1);
           expect(spikeAnimation.frames.frameTime, moreOrLessEquals(0.004));
 
@@ -781,6 +1029,43 @@ void main() {
           await expectLater(
             pngData,
             matchesGoldenFile('goldens/dungeon_animation_${mapType}_3.png'),
+          );
+        });
+      });
+    }
+  });
+
+  group('oversized tiles', () {
+    late TiledComponent component;
+    final size = Vector2(16, 16);
+
+    for (final mapType in [
+      'orthogonal',
+      'isometric',
+      'hexagonal',
+      'staggered',
+    ]) {
+      group(mapType, () {
+        setUp(() async {
+          final bundle = TestAssetBundle(
+            imageNames: [
+              '0x72_DungeonTilesetII_v1.4.png',
+            ],
+            stringNames: ['oversized_tiles_$mapType.tmx'],
+          );
+          component = await TiledComponent.load(
+            'oversized_tiles_$mapType.tmx',
+            size,
+            bundle: bundle,
+            images: Images(bundle: bundle),
+          );
+        });
+
+        test('renders ($mapType)', () async {
+          final pngData = await renderMapToPng(component);
+          await expectLater(
+            pngData,
+            matchesGoldenFile('goldens/oversized_tiles_$mapType.png'),
           );
         });
       });

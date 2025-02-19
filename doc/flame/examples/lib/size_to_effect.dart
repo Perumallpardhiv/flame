@@ -1,10 +1,9 @@
 import 'package:doc_flame_examples/ember.dart';
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 
-class SizeToEffectGame extends FlameGame with HasTappableComponents {
+class SizeToEffectGame extends FlameGame {
   bool reset = false;
   @override
   Future<void> onLoad() async {
@@ -12,21 +11,13 @@ class SizeToEffectGame extends FlameGame with HasTappableComponents {
       position: size / 2,
       size: Vector2(45, 40),
       onTap: (ember) {
-        if (reset = !reset) {
-          ember.add(
-            SizeEffect.to(
-              Vector2(90, 80),
-              EffectController(duration: 0.75),
-            ),
-          );
-        } else {
-          ember.add(
-            SizeEffect.to(
-              Vector2(45, 40),
-              EffectController(duration: 0.75),
-            ),
-          );
-        }
+        ember.add(
+          SizeEffect.to(
+            reset ? Vector2(45, 40) : Vector2(90, 80),
+            EffectController(duration: 0.75),
+          ),
+        );
+        reset = !reset;
       },
     )..anchor = Anchor.center;
 

@@ -1,37 +1,13 @@
-import 'package:flame/components.dart';
+import 'package:flame/events.dart';
 import 'package:flame/game.dart';
-import 'package:flame/input.dart';
 import 'package:flame_rive/flame_rive.dart';
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const GameWidget.controlled(gameFactory: RiveExampleGame.new));
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  late final game = RiveExampleGame();
-
-  @override
-  Widget build(BuildContext context) {
-    return GameWidget(
-      game: game,
-    );
-  }
-}
-
-class RiveExampleGame extends FlameGame with HasTappables {
-  @override
-  Color backgroundColor() {
-    return const Color(0xFFFFFFFF);
-  }
-
+class RiveExampleGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     final skillsArtboard =
@@ -40,17 +16,19 @@ class RiveExampleGame extends FlameGame with HasTappables {
   }
 }
 
-class SkillsAnimationComponent extends RiveComponent with Tappable {
-  SkillsAnimationComponent(Artboard artboard)
-      : super(
-          artboard: artboard,
-          size: Vector2.all(550),
-        );
+class SkillsAnimationComponent extends RiveComponent with TapCallbacks {
+  SkillsAnimationComponent(Artboard artboard) : super(artboard: artboard);
 
   SMIInput<double>? _levelInput;
 
   @override
-  Future<void>? onLoad() {
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    this.size = size;
+  }
+
+  @override
+  void onLoad() {
     final controller = StateMachineController.fromArtboard(
       artboard,
       "Designer's Test",
@@ -60,16 +38,14 @@ class SkillsAnimationComponent extends RiveComponent with Tappable {
       _levelInput = controller.findInput<double>('Level');
       _levelInput?.value = 0;
     }
-    return super.onLoad();
   }
 
   @override
-  bool onTapDown(TapDownInfo info) {
+  void onTapDown(TapDownEvent event) {
     final levelInput = _levelInput;
     if (levelInput == null) {
-      return false;
+      return;
     }
     levelInput.value = (levelInput.value + 1) % 3;
-    return true;
   }
 }

@@ -1,10 +1,20 @@
 import 'package:flame/collisions.dart';
 
 class Sweep<T extends Hitbox<T>> extends Broadphase<T> {
-  Sweep({super.items});
+  Sweep({List<T>? items}) : items = items ?? [];
 
-  late final List<T> _active = [];
-  late final Set<CollisionProspect<T>> _potentials = {};
+  @override
+  final List<T> items;
+
+  final _active = <T>[];
+  final _potentials = <int, CollisionProspect<T>>{};
+  final _prospectPool = ProspectPool<T>();
+
+  @override
+  void add(T item) => items.add(item);
+
+  @override
+  void remove(T item) => items.remove(item);
 
   @override
   void update() {
@@ -12,9 +22,10 @@ class Sweep<T extends Hitbox<T>> extends Broadphase<T> {
   }
 
   @override
-  Set<CollisionProspect<T>> query() {
+  Iterable<CollisionProspect<T>> query() {
     _active.clear();
     _potentials.clear();
+
     for (final item in items) {
       if (item.collisionType == CollisionType.inactive) {
         continue;
@@ -31,7 +42,12 @@ class Sweep<T extends Hitbox<T>> extends Broadphase<T> {
         if (activeBox.max.x >= currentMin) {
           if (item.collisionType == CollisionType.active ||
               activeItem.collisionType == CollisionType.active) {
-            _potentials.add(CollisionProspect<T>(item, activeItem));
+            if (_prospectPool.length <= _potentials.length) {
+              _prospectPool.expand(item);
+            }
+            final prospect = _prospectPool[_potentials.length]
+              ..set(item, activeItem);
+            _potentials[prospect.hash] = prospect;
           }
         } else {
           _active.remove(activeItem);
@@ -39,6 +55,6 @@ class Sweep<T extends Hitbox<T>> extends Broadphase<T> {
       }
       _active.add(item);
     }
-    return _potentials;
+    return _potentials.values;
   }
 }

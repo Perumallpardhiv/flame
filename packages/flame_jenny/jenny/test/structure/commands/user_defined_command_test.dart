@@ -1,7 +1,6 @@
 import 'package:jenny/jenny.dart';
 import 'package:jenny/src/parse/token.dart';
 import 'package:jenny/src/parse/tokenize.dart';
-import 'package:jenny/src/structure/commands/user_defined_command.dart';
 import 'package:test/test.dart';
 
 import '../../test_scenario.dart';
@@ -142,7 +141,7 @@ void main() {
         dialogueViews: [view1, view2],
       );
 
-      await dialogueRunner.runNode('Start');
+      await dialogueRunner.startDialogue('Start');
       expect(fnCounter, 1);
       expect(view1.numCalled, 1);
       expect(view1.argumentString, 'a b 1');
@@ -151,7 +150,7 @@ void main() {
       expect(view2.argumentString, 'a b 1');
       expect(view2.arguments, ['a', 'b', '1']);
 
-      await dialogueRunner.runNode('Start');
+      await dialogueRunner.startDialogue('Start');
       expect(fnCounter, 2);
       expect(view2.numCalled, 2);
       expect(view2.argumentString, 'a b 2');

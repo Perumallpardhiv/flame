@@ -5,7 +5,11 @@ import 'package:flame_test/flame_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _MyEffect extends Effect {
-  _MyEffect(super.controller);
+  _MyEffect(super.controller) {
+    completed.whenComplete(() => ++completedCounter);
+  }
+
+  int completedCounter = 0;
 
   double x = -1;
   Function()? onStartCallback;
@@ -68,15 +72,26 @@ void main() {
       expect(effect.x, closeTo(1, 1e-15));
     });
 
+    test(
+      'Completed future return on complete',
+      () async {
+        final effect = _MyEffect(EffectController(duration: 2));
+        final completer = effect.completed;
+
+        effect.update(4);
+        await expectLater(completer, completes);
+      },
+    );
+
     testWithFlameGame(
       'removeOnFinish = true',
       (game) async {
-        final obj = Component();
-        game.add(obj);
+        final component = Component();
+        game.add(component);
         final effect = _MyEffect(EffectController(duration: 1));
-        obj.add(effect);
+        component.add(effect);
         await game.ready();
-        expect(obj.children.length, 1);
+        expect(component.children.length, 1);
 
         expect(effect.removeOnFinish, true);
         expect(effect.isMounted, true);
@@ -85,20 +100,20 @@ void main() {
         expect(effect.controller.completed, true);
         game.update(0);
         expect(effect.isMounted, false);
-        expect(obj.children.length, 0);
+        expect(component.children.length, 0);
       },
     );
 
     testWithFlameGame(
       'removeOnFinish = false',
       (game) async {
-        final obj = Component();
-        game.add(obj);
+        final component = Component();
+        game.add(component);
         final effect = _MyEffect(EffectController(duration: 1));
         effect.removeOnFinish = false;
-        obj.add(effect);
+        component.add(effect);
         await game.ready();
-        expect(obj.children.length, 1);
+        expect(component.children.length, 1);
 
         expect(effect.removeOnFinish, false);
         expect(effect.isMounted, true);
@@ -109,7 +124,7 @@ void main() {
         expect(effect.controller.completed, true);
         game.update(0);
         expect(effect.isMounted, true);
-        expect(obj.children.length, 1);
+        expect(component.children.length, 1);
 
         // Even as more time is passing, the effect remains mounted and in
         // the completed state

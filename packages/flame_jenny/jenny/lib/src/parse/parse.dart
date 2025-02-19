@@ -1,7 +1,8 @@
-import 'package:jenny/src/errors.dart';
+import 'package:jenny/jenny.dart';
 import 'package:jenny/src/parse/token.dart';
 import 'package:jenny/src/parse/tokenize.dart';
 import 'package:jenny/src/structure/block.dart';
+import 'package:jenny/src/structure/commands/character_command.dart';
 import 'package:jenny/src/structure/commands/command.dart';
 import 'package:jenny/src/structure/commands/declare_command.dart';
 import 'package:jenny/src/structure/commands/if_command.dart';
@@ -9,12 +10,9 @@ import 'package:jenny/src/structure/commands/jump_command.dart';
 import 'package:jenny/src/structure/commands/local_command.dart';
 import 'package:jenny/src/structure/commands/set_command.dart';
 import 'package:jenny/src/structure/commands/stop_command.dart';
-import 'package:jenny/src/structure/commands/user_defined_command.dart';
+import 'package:jenny/src/structure/commands/visit_command.dart';
 import 'package:jenny/src/structure/commands/wait_command.dart';
-import 'package:jenny/src/structure/dialogue_choice.dart';
 import 'package:jenny/src/structure/dialogue_entry.dart';
-import 'package:jenny/src/structure/dialogue_line.dart';
-import 'package:jenny/src/structure/dialogue_option.dart';
 import 'package:jenny/src/structure/expressions/expression.dart';
 import 'package:jenny/src/structure/expressions/functions/_common.dart';
 import 'package:jenny/src/structure/expressions/functions/string.dart';
@@ -24,10 +22,6 @@ import 'package:jenny/src/structure/expressions/operators/_common.dart'
 import 'package:jenny/src/structure/expressions/operators/negate.dart';
 import 'package:jenny/src/structure/expressions/operators/not.dart';
 import 'package:jenny/src/structure/line_content.dart';
-import 'package:jenny/src/structure/markup_attribute.dart';
-import 'package:jenny/src/structure/node.dart';
-import 'package:jenny/src/variable_storage.dart';
-import 'package:jenny/src/yarn_project.dart';
 import 'package:meta/meta.dart';
 
 @internal
@@ -53,7 +47,7 @@ class _Parser {
       if (token == Token.startCommand) {
         final position0 = position;
         final command = parseCommand();
-        if (command is! DeclareCommand) {
+        if (command is! DeclareCommand && command is! CharacterCommand) {
           position = position0;
           typeError('command <<${command.name}>> is only allowed inside nodes');
         }
@@ -140,14 +134,26 @@ class _Parser {
         if (lines.isNotEmpty && lines.last is DialogueChoice) {
           (lines.last as DialogueChoice).options.add(option);
         } else {
+          if (lines.isNotEmpty && lines.last is DialogueLine) {
+            final lastLine = lines.removeLast() as DialogueLine;
+            lines.add(
+              DialogueLine(
+                content: lastLine.content!,
+                character: lastLine.character,
+                tags: [...lastLine.tags, '#lastline'],
+              ),
+            );
+          }
           lines.add(DialogueChoice([option]));
         }
       } else if (nextToken == Token.startCommand) {
         final position0 = position;
         final command = parseCommand();
-        if (command is DeclareCommand) {
-          position = position0;
-          syntaxError('<<declare>> command cannot be used inside a node');
+        if (command is DeclareCommand || command is CharacterCommand) {
+          syntaxError(
+            '<<${command.name}>> command cannot be used inside a node',
+            position0,
+          );
         }
         lines.add(command);
       } else if (nextToken.isText ||
@@ -208,12 +214,16 @@ class _Parser {
     );
   }
 
-  String? maybeParseLinePerson() {
+  Character? maybeParseLinePerson() {
     final token = peekToken();
     if (token.isPerson) {
       takePerson();
       take(Token.colon);
-      return token.content;
+      final name = token.content;
+      if (project.strictCharacterNames && !project.characters.contains(name)) {
+        nameError('unknown character "$name"', position - 2);
+      }
+      return project.characters[name] ?? Character(name);
     }
     return null;
   }
@@ -400,8 +410,8 @@ class _Parser {
     final token = peekToken(1);
     if (token == Token.commandIf) {
       return parseCommandIf();
-    } else if (token == Token.commandJump) {
-      return parseCommandJump();
+    } else if (token == Token.commandJump || token == Token.commandVisit) {
+      return parseCommandJumpOrVisit();
     } else if (token == Token.commandStop) {
       return parseCommandStop();
     } else if (token == Token.commandWait) {
@@ -410,6 +420,8 @@ class _Parser {
       return parseCommandSet();
     } else if (token == Token.commandDeclare || token == Token.commandLocal) {
       return parseCommandDeclareOrLocal();
+    } else if (token == Token.commandCharacter) {
+      return parseCommandCharacter();
     } else if (token == Token.commandElseif ||
         token == Token.commandElse ||
         token == Token.commandEndif) {
@@ -493,9 +505,12 @@ class _Parser {
     return IfBlock(constTrue, statements);
   }
 
-  Command parseCommandJump() {
+  Command parseCommandJumpOrVisit() {
     take(Token.startCommand);
-    take(Token.commandJump);
+    final isJump = peekToken() == Token.commandJump;
+    final isVisit = peekToken() == Token.commandVisit;
+    assert(isJump || isVisit);
+    position += 1;
     final token = peekToken();
     StringExpression target;
     if (token.isId) {
@@ -516,7 +531,7 @@ class _Parser {
     }
     take(Token.endCommand);
     take(Token.newline);
-    return JumpCommand(target);
+    return isJump ? JumpCommand(target) : VisitCommand(target);
   }
 
   Command parseCommandStop() {
@@ -671,6 +686,40 @@ class _Parser {
     }
   }
 
+  Command parseCommandCharacter() {
+    take(Token.startCommand);
+    take(Token.commandCharacter);
+    take(Token.startExpression);
+    String? realName;
+    if (peekToken().isString) {
+      realName = peekToken().content;
+      position += 1;
+    }
+    final aliases = <String>[];
+    while (peekToken().isId) {
+      final alias = peekToken().content;
+      if (project.characters.contains(alias)) {
+        final char = project.characters[alias]!;
+        nameError('character "$alias" was already defined: $char');
+      }
+      aliases.add(alias);
+      position += 1;
+    }
+    take(Token.endExpression);
+    if (aliases.isEmpty) {
+      syntaxError('at least one character id is required');
+    }
+    if (realName == null) {
+      realName = aliases.first;
+      aliases.removeAt(0);
+    }
+    take(Token.endCommand);
+    takeNewline();
+    final character = Character(realName, aliases: aliases);
+    project.characters.add(character);
+    return const CharacterCommand();
+  }
+
   Command parseUserDefinedCommand() {
     take(Token.startCommand);
     final commandToken = peekToken();
@@ -724,9 +773,9 @@ class _Parser {
   /// The initial [lhs] sub-expression is provided, and the parsing position
   /// should be at the start of the next operator.
   Expression _parseExpressionImpl(Expression lhs, int minPrecedence) {
-    var position0 = position;
     var result = lhs;
     while ((precedences[peekToken()] ?? -1) >= minPrecedence) {
+      var position0 = position;
       final op = peekToken();
       final opPrecedence = precedences[op]!;
       position += 1;
@@ -873,8 +922,11 @@ class _Parser {
   }
 
   bool takeId() => takeTokenType(TokenType.id);
+
   bool takeText() => takeTokenType(TokenType.text);
+
   bool takePerson() => takeTokenType(TokenType.person);
+
   bool takeNewline() {
     if (position >= tokens.length) {
       return true;
@@ -926,14 +978,9 @@ class _Parser {
   }
 }
 
-typedef FunctionBuilder = Expression Function(
-  List<FunctionArgument>,
-  YarnProject,
-  ErrorFn,
-);
-
 class _NodeHeader {
   _NodeHeader(this.title, this.tags);
+
   String? title;
   Map<String, String>? tags;
 }

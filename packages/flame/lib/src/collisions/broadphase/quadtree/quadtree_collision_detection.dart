@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 /// Do not use standard [items] list for components. Instead adds all components
 /// into [QuadTreeBroadphase] class.
 class QuadTreeCollisionDetection
-    extends StandardCollisionDetection<QuadTreeBroadphase<ShapeHitbox>> {
+    extends StandardCollisionDetection<QuadTreeBroadphase> {
   QuadTreeCollisionDetection({
     required Rect mapDimensions,
     required ExternalBroadphaseCheck onComponentTypeCheck,
@@ -14,7 +14,7 @@ class QuadTreeCollisionDetection
     int maxObjects = 25,
     int maxDepth = 10,
   }) : super(
-          broadphase: QuadTreeBroadphase<ShapeHitbox>(
+          broadphase: QuadTreeBroadphase(
             mainBoxSize: mapDimensions,
             maxObjects: maxObjects,
             maxDepth: maxDepth,
@@ -28,28 +28,28 @@ class QuadTreeCollisionDetection
 
   @override
   void add(ShapeHitbox item) {
-    super.add(item);
-
     item.onAabbChanged = () => _scheduledUpdate.add(item);
-    // ignore: prefer_function_declarations_over_variables
-    final listenerCollisionType = () {
+    void listenerCollisionType() {
       if (item.isMounted) {
         if (item.collisionType == CollisionType.active) {
-          broadphase.activeCollisions.add(item);
+          broadphase.activeHitboxes.add(item);
         } else {
-          broadphase.activeCollisions.remove(item);
+          broadphase.activeHitboxes.remove(item);
         }
       }
-    };
+    }
+
     item.collisionTypeNotifier.addListener(listenerCollisionType);
     _listenerCollisionType[item] = listenerCollisionType;
 
-    broadphase.add(item);
+    super.add(item);
   }
 
   @override
   void addAll(Iterable<ShapeHitbox> items) {
-    items.forEach(add);
+    for (final item in items) {
+      add(item);
+    }
   }
 
   @override
@@ -61,21 +61,22 @@ class QuadTreeCollisionDetection
       _listenerCollisionType.remove(item);
     }
 
-    broadphase.remove(item);
     super.remove(item);
   }
 
   @override
   void removeAll(Iterable<ShapeHitbox> items) {
     broadphase.clear();
-    items.forEach(remove);
+    for (final item in items) {
+      remove(item);
+    }
   }
 
   @override
   void run() {
-    _scheduledUpdate.forEach(
-      broadphase.updateTransform,
-    );
+    for (final hitbox in _scheduledUpdate) {
+      broadphase.updateTransform(hitbox);
+    }
     _scheduledUpdate.clear();
     super.run();
   }

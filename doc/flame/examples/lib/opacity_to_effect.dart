@@ -1,10 +1,9 @@
 import 'package:doc_flame_examples/flower.dart';
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
-import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 
-class OpacityToEffectGame extends FlameGame with HasTappableComponents {
+class OpacityToEffectGame extends FlameGame {
   bool reset = false;
 
   @override
@@ -19,19 +18,20 @@ class OpacityToEffectGame extends FlameGame with HasTappableComponents {
   }
 
   void _onTap(Flower flower) {
-    if (reset = !reset) {
+    if (reset) {
+      flower.add(
+        OpacityEffect.fadeIn(
+          EffectController(duration: 0.75),
+        ),
+      );
+    } else {
       flower.add(
         OpacityEffect.to(
           0.2,
           EffectController(duration: 0.75),
         ),
       );
-    } else {
-      flower.add(
-        OpacityEffect.fadeIn(
-          EffectController(duration: 0.75),
-        ),
-      );
     }
+    reset = !reset;
   }
 }

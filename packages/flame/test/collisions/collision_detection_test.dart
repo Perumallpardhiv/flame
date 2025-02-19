@@ -1,7 +1,8 @@
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
-import 'package:flame/geometry.dart';
+import 'package:flame/game.dart';
 import 'package:flame/geometry.dart' as geometry;
+import 'package:flame/geometry.dart';
 import 'package:flame_test/flame_test.dart';
 import 'package:test/test.dart';
 
@@ -803,6 +804,7 @@ void main() {
     });
 
     testCollisionDetectionGame('circles as children', (game) async {
+      final world = game.world;
       final outerCircle = CircleHitbox(
         radius: 4.0,
         anchor: Anchor.center,
@@ -819,7 +821,7 @@ void main() {
         position: Vector2.all(100),
         children: [innerCircle],
       );
-      await game.ensureAddAll([outerContainer, innerContainer]);
+      await world.ensureAddAll([outerContainer, innerContainer]);
       final intersections = game.collisionDetection.intersections(
         innerCircle,
         outerCircle,
@@ -965,12 +967,58 @@ void main() {
         reason: "Should return the enclosed polygon's position",
       );
     });
+
+    testWithGame<_CollisionDetectionGame>(
+      'circle enclosed by solid polygon defined in clockwise (wrong) order',
+      _CollisionDetectionGame.new,
+      (game) async {
+        final world = game.world;
+        final polygonSize = Vector2.all(3);
+        final innerCircle = CircleHitbox();
+        final outerPolygon = PolygonHitbox.relative(
+          [
+            Vector2(0.5, 1.0),
+            Vector2(-0.5, 1.0),
+            Vector2(-1.0, 0.5),
+            Vector2(-1.0, -0.5),
+            Vector2(-0.5, -1.0),
+            Vector2(0.5, -1.0),
+            Vector2(1.0, -0.5),
+            Vector2(1.0, 0.5),
+          ],
+          parentSize: polygonSize,
+        )..isSolid = true;
+        await world.ensureAddAll([
+          PositionComponent(
+            position: Vector2.all(3),
+            size: Vector2.all(1),
+            anchor: Anchor.center,
+            children: [innerCircle],
+          ),
+          PositionComponent(
+            position: Vector2.all(3),
+            size: polygonSize,
+            anchor: Anchor.center,
+            children: [outerPolygon],
+          ),
+        ]);
+        final intersections =
+            game.collisionDetection.intersections(innerCircle, outerPolygon);
+        expect(
+          intersections.isNotEmpty,
+          isTrue,
+          reason: "Should return the enclosed circle's position",
+        );
+      },
+    );
   });
 
   group('Raycasting', () {
     runCollisionTestRegistry({
-      'one hitbox': (game) async {
-        game.ensureAdd(
+      'one hitbox': (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAdd(
           PositionComponent(
             children: [RectangleHitbox()],
             position: Vector2(100, 0),
@@ -984,13 +1032,15 @@ void main() {
           origin: Vector2.zero(),
           direction: Vector2(1, 0),
         );
-        final result = game.collisionDetection.raycast(ray);
-        expect(result?.hitbox?.parent, game.children.first);
+        final result = collisionSystem.collisionDetection.raycast(ray);
+        expect(result?.hitbox?.parent, world.children.first);
         expect(result?.reflectionRay?.origin, closeToVector(Vector2(50, 0)));
         expect(result?.reflectionRay?.direction, closeToVector(Vector2(-1, 0)));
       },
-      'multiple hitboxes after each other': (game) async {
-        game.ensureAddAll([
+      'multiple hitboxes after each other': (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAddAll([
           for (var i = 0.0; i < 10; i++)
             PositionComponent(
               position: Vector2.all(100 + i * 10),
@@ -1003,16 +1053,19 @@ void main() {
           origin: Vector2.zero(),
           direction: Vector2.all(1)..normalize(),
         );
-        final result = game.collisionDetection.raycast(ray);
-        expect(result?.hitbox?.parent, game.children.first);
+        final result = collisionSystem.collisionDetection.raycast(ray);
+        expect(result?.hitbox?.parent, world.children.first);
         expect(result?.reflectionRay?.origin, closeToVector(Vector2.all(90)));
         expect(
           result?.reflectionRay?.direction,
           closeToVector(Vector2(-1, 1)..normalize()),
         );
       },
-      'multiple hitboxes after each other with one ignored': (game) async {
-        game.ensureAddAll([
+      'multiple hitboxes after each other with one ignored':
+          (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAddAll([
           for (var i = 0.0; i < 10; i++)
             PositionComponent(
               position: Vector2.all(100 + i * 10),
@@ -1025,13 +1078,13 @@ void main() {
           origin: Vector2.zero(),
           direction: Vector2.all(1)..normalize(),
         );
-        final result = game.collisionDetection.raycast(
+        final result = collisionSystem.collisionDetection.raycast(
           ray,
           ignoreHitboxes: [
-            game.children.first.children.first as ShapeHitbox,
+            world.children.first.children.first as ShapeHitbox,
           ],
         );
-        expect(result?.hitbox?.parent, game.children.toList()[1]);
+        expect(result?.hitbox?.parent, game.world.children.toList()[1]);
         expect(
           result?.reflectionRay?.origin,
           closeToVector(Vector2.all(100.5)),
@@ -1041,8 +1094,41 @@ void main() {
           closeToVector(Vector2(-1, 1)..normalize()),
         );
       },
-      'ray with origin on hitbox corner': (game) async {
-        game.ensureAddAll([
+      'multiple hitboxes after each other with filter':
+          (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAddAll([
+          for (var i = 0.0; i < 10; i++)
+            PositionComponent(
+              position: Vector2.all(100 + i * 10),
+              size: Vector2.all(20 - i),
+              anchor: Anchor.center,
+            )..add(RectangleHitbox()),
+        ]);
+        await game.ready();
+        final ray = Ray2(
+          origin: Vector2.zero(),
+          direction: Vector2.all(1)..normalize(),
+        );
+        final result = collisionSystem.collisionDetection.raycast(
+          ray,
+          hitboxFilter: (hitbox) => hitbox.parent != world.children.first,
+        );
+        expect(result?.hitbox?.parent, game.world.children.toList()[1]);
+        expect(
+          result?.reflectionRay?.origin,
+          closeToVector(Vector2.all(100.5)),
+        );
+        expect(
+          result?.reflectionRay?.direction,
+          closeToVector(Vector2(-1, 1)..normalize()),
+        );
+      },
+      'ray with origin on hitbox corner': (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAddAll([
           PositionComponent(
             position: Vector2.all(10),
             size: Vector2.all(10),
@@ -1053,16 +1139,18 @@ void main() {
           origin: Vector2.all(10),
           direction: Vector2.all(1)..normalize(),
         );
-        final result = game.collisionDetection.raycast(ray);
-        expect(result?.hitbox?.parent, game.children.first);
+        final result = collisionSystem.collisionDetection.raycast(ray);
+        expect(result?.hitbox?.parent, world.children.first);
         expect(result?.reflectionRay?.origin, closeToVector(Vector2(20, 20)));
         expect(
           result?.reflectionRay?.direction,
           closeToVector(Vector2(1, -1)..normalize()),
         );
       },
-      'raycast with maxDistance': (game) async {
-        game.ensureAddAll([
+      'raycast with maxDistance': (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAddAll([
           PositionComponent(
             position: Vector2.all(20),
             size: Vector2.all(40),
@@ -1078,7 +1166,7 @@ void main() {
         final result = RaycastResult<ShapeHitbox>();
 
         // No hit cast
-        game.collisionDetection.raycast(
+        collisionSystem.collisionDetection.raycast(
           ray,
           maxDistance: Vector2.all(9).length,
           out: result,
@@ -1086,19 +1174,21 @@ void main() {
         expect(result.hitbox?.parent, isNull);
 
         // Extended cast
-        game.collisionDetection.raycast(
+        collisionSystem.collisionDetection.raycast(
           ray,
           maxDistance: Vector2.all(10).length,
           out: result,
         );
-        expect(result.hitbox?.parent, game.children.first);
+        expect(result.hitbox?.parent, world.children.first);
       },
     });
 
     group('Rectangle hitboxes', () {
       runCollisionTestRegistry({
-        'ray from within RectangleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from within RectangleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.all(0),
               size: Vector2.all(10),
@@ -1109,8 +1199,8 @@ void main() {
             origin: Vector2.all(5),
             direction: Vector2.all(1)..normalize(),
           );
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.normal, closeToVector(Vector2(0, -1)));
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(10, 10)));
           expect(
@@ -1118,8 +1208,10 @@ void main() {
             closeToVector(Vector2(1, -1)..normalize()),
           );
         },
-        'ray from the left of RectangleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the left of RectangleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1127,16 +1219,18 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(-5, 5), direction: Vector2(1, 0));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(0, 5)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(-1, 0)),
           );
         },
-        'ray from the top of RectangleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the top of RectangleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1144,16 +1238,18 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(5, -5), direction: Vector2(0, 1));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(5, 0)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(0, -1)),
           );
         },
-        'ray from the right of RectangleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the right of RectangleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1161,16 +1257,18 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(15, 5), direction: Vector2(-1, 0));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(10, 5)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(1, 0)),
           );
         },
-        'ray from the bottom of RectangleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the bottom of RectangleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1178,8 +1276,8 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(5, 15), direction: Vector2(0, -1));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(5, 10)));
           expect(
             result?.reflectionRay?.direction,
@@ -1191,8 +1289,10 @@ void main() {
 
     group('Circle hitboxes', () {
       runCollisionTestRegistry({
-        'ray from top to bottom within CircleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from top to bottom within CircleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1200,8 +1300,8 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(5, 4), direction: Vector2(0, 1));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.normal, closeToVector(Vector2(0, -1)));
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(5, 10)));
           expect(
@@ -1209,8 +1309,11 @@ void main() {
             closeToVector(Vector2(0, -1)),
           );
         },
-        'ray from bottom-right to top-left within CircleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from bottom-right to top-left within CircleHitbox':
+            (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1221,8 +1324,8 @@ void main() {
             origin: Vector2.all(6),
             direction: Vector2.all(-1)..normalize(),
           );
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.normal, closeToVector(Vector2.all(0.707106781186547)));
           expect(
             result?.intersectionPoint,
@@ -1233,8 +1336,11 @@ void main() {
             closeToVector(Vector2.all(1)..normalize()),
           );
         },
-        'ray from bottom within CircleHitbox going down': (game) async {
-          game.ensureAddAll([
+        'ray from bottom within CircleHitbox going down':
+            (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1243,8 +1349,8 @@ void main() {
           await game.ready();
           final direction = Vector2(0, 1);
           final ray = Ray2(origin: Vector2(5, 6), direction: direction);
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.normal, closeToVector(Vector2(0, -1)));
           expect(
             result?.intersectionPoint,
@@ -1255,8 +1361,10 @@ void main() {
             closeToVector(direction.inverted()),
           );
         },
-        'ray from the left of CircleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the left of CircleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1264,16 +1372,18 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(-5, 5), direction: Vector2(1, 0));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(0, 5)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(-1, 0)),
           );
         },
-        'ray from the top of CircleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the top of CircleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1281,16 +1391,18 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(5, -5), direction: Vector2(0, 1));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(5, 0)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(0, -1)),
           );
         },
-        'ray from the right of CircleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the right of CircleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1298,16 +1410,18 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(15, 5), direction: Vector2(-1, 0));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(10, 5)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(1, 0)),
           );
         },
-        'ray from the bottom of CircleHitbox': (game) async {
-          game.ensureAddAll([
+        'ray from the bottom of CircleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2.zero(),
               size: Vector2.all(10),
@@ -1315,27 +1429,29 @@ void main() {
           ]);
           await game.ready();
           final ray = Ray2(origin: Vector2(5, 15), direction: Vector2(0, -1));
-          final result = game.collisionDetection.raycast(ray);
-          expect(result?.hitbox?.parent, game.children.first);
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, world.children.first);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(5, 10)));
           expect(
             result?.reflectionRay?.direction,
             closeToVector(Vector2(0, 1)),
           );
         },
-        'ray from the center of CircleHitbox': (game) async {
+        'ray from the center of CircleHitbox': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
           final positionComponent = PositionComponent(
             position: Vector2.zero(),
             size: Vector2.all(10),
           )..add(CircleHitbox());
-          game.ensureAdd(positionComponent);
+          await world.ensureAdd(positionComponent);
 
           await game.ready();
           final ray = Ray2(
             origin: positionComponent.absoluteCenter,
             direction: Vector2(0, -1),
           );
-          final result = game.collisionDetection.raycast(ray);
+          final result = collisionSystem.collisionDetection.raycast(ray);
           expect(result?.hitbox?.parent, positionComponent);
           expect(result?.reflectionRay?.origin, closeToVector(Vector2(5, 0)));
           expect(
@@ -1343,13 +1459,34 @@ void main() {
             closeToVector(Vector2(0, 1)),
           );
         },
+        'ray from slightly outside of the CircleHitbox should not be counted '
+            'as inside': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          final positionComponent = PositionComponent(
+            position: Vector2.zero(),
+            anchor: Anchor.center,
+            size: Vector2.all(120),
+          )..add(CircleHitbox());
+          await world.ensureAdd(positionComponent);
+          await game.ready();
+          final ray = Ray2(
+            origin: Vector2(-38.06044293218409, -48.5986651724067),
+            direction: Vector2(0.927474693393028, -0.3738859359691247),
+          );
+          final result = collisionSystem.collisionDetection.raycast(ray);
+          expect(result?.hitbox?.parent, positionComponent);
+          expect(result?.isInsideHitbox, isFalse);
+        },
       });
     });
 
     group('raycastAll', () {
       runCollisionTestRegistry({
-        'All directions and all hits': (game) async {
-          game.ensureAddAll([
+        'All directions and all hits': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2(10, 0),
               size: Vector2.all(10),
@@ -1369,15 +1506,17 @@ void main() {
           ]);
           await game.ready();
           final origin = Vector2.all(15);
-          final results = game.collisionDetection.raycastAll(
+          final results = collisionSystem.collisionDetection.raycastAll(
             origin,
             numberOfRays: 4,
           );
           expect(results.every((r) => r.isActive), isTrue);
           expect(results.length, 4);
         },
-        'raycastAll with maxDistance': (game) async {
-          game.ensureAddAll([
+        'raycastAll with maxDistance': (collisionSystem) async {
+          final game = collisionSystem as FlameGame;
+          final world = game.world;
+          await world.ensureAddAll([
             PositionComponent(
               position: Vector2(10, 0),
               size: Vector2.all(10),
@@ -1399,7 +1538,7 @@ void main() {
           final origin = Vector2.all(15);
 
           // No hit
-          final results1 = game.collisionDetection.raycastAll(
+          final results1 = collisionSystem.collisionDetection.raycastAll(
             origin,
             maxDistance: 4,
             numberOfRays: 4,
@@ -1407,7 +1546,7 @@ void main() {
           expect(results1.length, isZero);
 
           // Hit all four
-          final results2 = game.collisionDetection.raycastAll(
+          final results2 = collisionSystem.collisionDetection.raycastAll(
             origin,
             maxDistance: 5,
             numberOfRays: 4,
@@ -1418,8 +1557,10 @@ void main() {
     });
 
     runCollisionTestRegistry({
-      'All directions and all hits': (game) async {
-        game.ensureAddAll([
+      'All directions and all hits': (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
+        await world.ensureAddAll([
           PositionComponent(
             position: Vector2(10, 0),
             size: Vector2.all(10),
@@ -1439,8 +1580,8 @@ void main() {
         ]);
         await game.ready();
         final origin = Vector2.all(15);
-        final ignoreHitbox = game.children.first.children.first as ShapeHitbox;
-        final results = game.collisionDetection.raycastAll(
+        final ignoreHitbox = world.children.first.children.first as ShapeHitbox;
+        final results = collisionSystem.collisionDetection.raycastAll(
           origin,
           numberOfRays: 4,
           ignoreHitboxes: [ignoreHitbox],
@@ -1454,18 +1595,20 @@ void main() {
 
   group('Raytracing', () {
     runCollisionTestRegistry({
-      'on single circle': (game) async {
+      'on single circle': (collisionSystem) async {
+        final game = collisionSystem as FlameGame;
+        final world = game.world;
         final circle = CircleComponent(
           radius: 10.0,
           position: Vector2.all(20),
           anchor: Anchor.center,
         )..add(CircleHitbox());
-        await game.ensureAdd(circle);
+        await world.ensureAdd(circle);
         final ray = Ray2(
           origin: Vector2(0, 10),
           direction: Vector2.all(1.0)..normalize(),
         );
-        final results = game.collisionDetection.raytrace(ray);
+        final results = collisionSystem.collisionDetection.raytrace(ray);
         expect(results.length, 1);
         expect(results.first.isActive, isTrue);
         expect(results.first.isInsideHitbox, isFalse);
@@ -1476,12 +1619,13 @@ void main() {
         expect(results.first.normal, Vector2(-1, 0));
       },
       'on single rectangle': (game) async {
+        final world = (game as FlameGame).world;
         final rectangle = RectangleComponent(
           position: Vector2.all(20),
           size: Vector2.all(20),
           anchor: Anchor.center,
         )..add(RectangleHitbox());
-        await game.ensureAdd(rectangle);
+        await world.ensureAdd(rectangle);
         final ray = Ray2(
           origin: Vector2(0, 10),
           direction: Vector2.all(1.0)..normalize(),
@@ -1497,12 +1641,13 @@ void main() {
         expect(results.first.normal, Vector2(-1, 0));
       },
       'on single rectangle with ray with negative X': (game) async {
+        final world = (game as FlameGame).world;
         final rectangle = RectangleComponent(
           position: Vector2(-20, 40),
           size: Vector2.all(20),
           anchor: Anchor.center,
         )..add(RectangleHitbox());
-        await game.ensureAdd(rectangle);
+        await world.ensureAdd(rectangle);
         final ray = Ray2(
           origin: Vector2(10, 20),
           direction: Vector2(-1, 1)..normalize(),
@@ -1518,6 +1663,7 @@ void main() {
         expect(results.first.normal, Vector2(1, 0));
       },
       'on two circles': (game) async {
+        final world = (game as FlameGame).world;
         final circle1 = CircleComponent(
           position: Vector2.all(20),
           radius: 10,
@@ -1528,7 +1674,7 @@ void main() {
           radius: 10,
           anchor: Anchor.center,
         )..add(CircleHitbox());
-        await game.ensureAddAll([circle1, circle2]);
+        await world.ensureAddAll([circle1, circle2]);
         final ray = Ray2(
           origin: Vector2(0, 10),
           direction: Vector2.all(1.0)..normalize(),
@@ -1553,6 +1699,7 @@ void main() {
         expect(reflectionRay2?.direction, Vector2(1, 1)..normalize());
       },
       'on two rectangles': (game) async {
+        final world = (game as FlameGame).world;
         final rectangle1 = RectangleComponent(
           position: Vector2.all(20),
           size: Vector2.all(20),
@@ -1563,7 +1710,7 @@ void main() {
           size: Vector2.all(20),
           anchor: Anchor.center,
         )..add(RectangleHitbox());
-        await game.ensureAddAll([rectangle1, rectangle2]);
+        await world.ensureAddAll([rectangle1, rectangle2]);
         final ray = Ray2(
           origin: Vector2(0, 10),
           direction: Vector2.all(1.0)..normalize(),
@@ -1589,6 +1736,7 @@ void main() {
         expect(reflectionRay2?.direction, Vector2(1, 1)..normalize());
       },
       'on two rectangles with one ignored': (game) async {
+        final world = (game as FlameGame).world;
         final rectangle1 = RectangleComponent(
           position: Vector2.all(20),
           size: Vector2.all(20),
@@ -1599,13 +1747,13 @@ void main() {
           size: Vector2.all(20),
           anchor: Anchor.center,
         )..add(RectangleHitbox());
-        await game.ensureAddAll([rectangle1, rectangle2]);
+        await world.ensureAddAll([rectangle1, rectangle2]);
         final ray = Ray2(
           origin: Vector2(0, 10),
           direction: Vector2.all(1.0)..normalize(),
         );
         final ignoreHitbox =
-            game.children.toList()[1].children.first as ShapeHitbox;
+            world.children.toList()[1].children.first as ShapeHitbox;
         final results = game.collisionDetection
             .raytrace(ray, ignoreHitboxes: [ignoreHitbox]).toList();
         expect(results.length, 1);
@@ -1622,6 +1770,7 @@ void main() {
         expect(results2.length, 1);
       },
       'on a rectangle within another': (game) async {
+        final world = (game as FlameGame).world;
         final rectangle1 = RectangleComponent(
           position: Vector2.all(20),
           size: Vector2.all(20),
@@ -1629,7 +1778,7 @@ void main() {
         final rectangle2 = RectangleComponent(
           size: Vector2.all(200),
         )..add(RectangleHitbox());
-        await game.ensureAddAll([rectangle1, rectangle2]);
+        await world.ensureAddAll([rectangle1, rectangle2]);
         final ray = Ray2(
           origin: Vector2(20, 10),
           direction: Vector2.all(1.0)..normalize(),
@@ -1654,7 +1803,49 @@ void main() {
         final reflectionRay2 = results[1].reflectionRay;
         expect(reflectionRay2?.origin, Vector2(50, 0));
         expect(reflectionRay2?.direction, Vector2(1, 1)..normalize());
-      }
+      },
+      'make sure that ray does not escape circle hitbox': (game) async {
+        final world = (game as FlameGame).world;
+        final circle = CircleComponent(
+          position: Vector2(0, 0),
+          radius: 5,
+          anchor: Anchor.center,
+        )..add(CircleHitbox());
+        await world.ensureAdd(circle);
+        final ray = Ray2(
+          origin: Vector2(0, 0),
+          direction: Vector2(1.0, 0),
+        );
+        final results = game.collisionDetection.raytrace(ray);
+        expect(results.length, 10);
+        expect(results.first.isActive, isTrue);
+        expect(results.first.isInsideHitbox, isTrue);
+        expect(
+          results.first.intersectionPoint,
+          Vector2(5, 0),
+        );
+        final reflectionRay = results.first.reflectionRay;
+        expect(reflectionRay?.origin, Vector2(5, 0));
+        expect(reflectionRay?.direction, Vector2(-1, 0)..normalize());
+        expect(results.first.normal, Vector2(-1, 0));
+      },
+    });
+  });
+
+  group('collisionsCompletedNotifier', () {
+    runCollisionTestRegistry({
+      'collisionsCompletedNotifier calls listeners': (game) async {
+        var calledTimes = 0;
+        final listeners = List.generate(10, (_) => () => calledTimes++);
+        for (final listener in listeners) {
+          game.collisionDetection.collisionsCompletedNotifier
+              .addListener(listener);
+        }
+        game.update(0);
+        expect(calledTimes, listeners.length);
+      },
     });
   });
 }
+
+class _CollisionDetectionGame extends FlameGame with HasCollisionDetection {}

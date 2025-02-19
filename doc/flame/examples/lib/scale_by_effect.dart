@@ -1,9 +1,8 @@
 import 'package:doc_flame_examples/flower.dart';
 import 'package:flame/effects.dart';
-import 'package:flame/experimental.dart';
 import 'package:flame/game.dart';
 
-class ScaleByEffectGame extends FlameGame with HasTappableComponents {
+class ScaleByEffectGame extends FlameGame {
   bool reverse = false;
   bool hold = false;
   @override
@@ -16,23 +15,14 @@ class ScaleByEffectGame extends FlameGame with HasTappableComponents {
           return;
         }
         hold = true;
-        if (reverse = !reverse) {
-          flower.add(
-            ScaleEffect.by(
-              Vector2.all(1.5),
-              EffectController(duration: 0.3),
-              onComplete: () => hold = false,
-            ),
-          );
-        } else {
-          flower.add(
-            ScaleEffect.by(
-              Vector2.all(1 / 1.5),
-              EffectController(duration: 0.3),
-              onComplete: () => hold = false,
-            ),
-          );
-        }
+        flower.add(
+          ScaleEffect.by(
+            reverse ? Vector2.all(1 / 1.5) : Vector2.all(1.5),
+            EffectController(duration: 0.3),
+            onComplete: () => hold = false,
+          ),
+        );
+        reverse = !reverse;
       },
     );
     add(flower);

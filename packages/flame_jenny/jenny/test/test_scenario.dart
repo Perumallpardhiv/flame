@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:jenny/jenny.dart';
-import 'package:jenny/src/structure/commands/user_defined_command.dart';
 import 'package:meta/meta.dart';
 import 'package:test/test.dart';
 
@@ -13,14 +12,14 @@ import 'package:test/test.dart';
 /// for convenience.
 @isTest
 Future<void> testScenario({
-  String? testName,
   required String input,
   required String testPlan,
+  String? testName,
   bool skip = false,
   List<String>? commands,
   YarnProject? yarn,
 }) async {
-  final yarnProject = yarn ?? YarnProject();
+  final yarnProject = (yarn ?? YarnProject())..strictCharacterNames = false;
   commands?.forEach(yarnProject.commands.addOrphanedCommand);
 
   Future<void> testBody() async {
@@ -30,7 +29,7 @@ Future<void> testScenario({
       yarnProject: yarnProject,
       dialogueViews: [plan],
     );
-    await dialogue.runNode(plan.startNode);
+    await dialogue.startDialogue(plan.startNode);
     assert(
       plan.done,
       '\n'
@@ -108,7 +107,7 @@ class _TestPlan extends DialogueView {
         : '${expected.character}: ${expected.text}';
     final text2 = (line.character == null)
         ? line.text
-        : '${line.character}: ${line.text}';
+        : '${line.character!.name}: ${line.text}';
     assert(
       text1 == text2,
       'Expected line: "$text1"\n'
@@ -145,7 +144,7 @@ class _TestPlan extends DialogueView {
               option1.text +
               (option1.enabled ? '' : ' [disabled]');
       final text2 =
-          (option2.character == null ? '' : '${option2.character}: ') +
+          (option2.character == null ? '' : '${option2.character!.name}: ') +
               option2.text +
               (option2.isAvailable ? '' : ' [disabled]');
       assert(
@@ -190,7 +189,7 @@ class _TestPlan extends DialogueView {
   }
 
   void _parse(String input) {
-    final rxEmpty = RegExp(r'^\s*$');
+    final rxEmpty = RegExp(r'^\s*(//.*)?$');
     final rxLine = RegExp(r'^line:\s+((\w+):\s+)?(.*)$');
     final rxOption = RegExp(r'^option:\s+((\w+):\s+)?(.*?)\s*(\[disabled\])?$');
     final rxSelect = RegExp(r'^select:\s+(\d+)$');
@@ -215,8 +214,8 @@ class _TestPlan extends DialogueView {
       } else if (match2 != null) {
         final name = match2.group(2);
         final text = match2.group(3)!;
-        final disabled = match2.group(4) != null;
-        _expected.add(_Option(name, text, !disabled));
+        final enabled = match2.group(4) == null;
+        _expected.add(_Option(name, text, enabled: enabled));
       } else if (match3 != null) {
         final index = int.parse(match3.group(1)!);
         final options = <_Option>[];
@@ -254,7 +253,7 @@ class _Choice {
 }
 
 class _Option {
-  const _Option(this.character, this.text, this.enabled);
+  const _Option(this.character, this.text, {required this.enabled});
   final String? character;
   final String text;
   final bool enabled;
